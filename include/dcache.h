@@ -1,0 +1,4 @@
+#ifndef KTABLEFS_DCACHE_H_
+#define KTABLEFS_DCACHE_H_
+
+#endif // KTABLEFS_DCACHE_H_
