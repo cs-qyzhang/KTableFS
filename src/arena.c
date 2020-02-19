@@ -5,9 +5,10 @@
  *
  * use arena to reduce the number of small memory malloc
  */
-#include "arena.h"
 #include <stdlib.h>
 #include <stdint.h>
+#include "arena.h"
+#include "ktablefs_config.h"
 
 #ifdef DEBUG
 #include <assert.h>
@@ -15,10 +16,6 @@
 #else // DEBUG
 #define Assert(expr)
 #endif
-
-// TODO: replace define with cmake configuration
-#define ARENA_NB_BLOCKS   256
-#define ARENA_BLOCK_SIZE  PAGE_SIZE
 
 struct arena {
   // current block index

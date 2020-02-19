@@ -1,2 +1,6 @@
 #define KTableFS_VERSION_MAJOR  @KTableFS_VERSION_MAJOR@
 #define KTableFS_VERSION_MINOR  @KTableFS_VERSION_MINOR@
+#define PAGE_SIZE               @PAGE_SIZE@
+#define ARENA_NB_BLOCKS         @ARENA_NB_BLOCKS@
+#define ARENA_BLOCK_SIZE        @ARENA_BLOCK_SIZE@
+#define AIO_MAX_EVENTS          @AIO_MAX_EVENTS@

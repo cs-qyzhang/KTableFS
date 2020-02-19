@@ -1,9 +1,27 @@
 cmake_minimum_required(VERSION 2.8)
 
 project(KTableFS)
+
+# program configurations
 set(KTableFS_VERSION_MAJOR 0)
 set(KTableFS_VERSION_MINOR 1)
+set(PAGE_SIZE 4096)
+set(ARENA_NB_BLOCKS 256)
+set(ARENA_BLOCK_SIZE PAGE_SIZE)
+set(AIO_MAX_EVENTS 64)
+
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_FLAGS "-Wall")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
+
+if(CMAKE_BUILD_TYPE MATCHES Debug)
+  message(STATUS "Debug build.")
+elseif(CMAKE_BUILD_TYPE MATCHES Release)
+  message(STATUS "Release build.")
+else()
+  message(STATUS "Some other build type.")
+endif()
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
 configure_file(
@@ -11,7 +29,19 @@ configure_file(
   "${PROJECT_SOURCE_DIR}/include/ktablefs_config.h"
 )
 
-add_definitions(-DDEBUG)
-add_executable(arena_test ${PROJECT_SOURCE_DIR}/test/arena_test.c ${PROJECT_SOURCE_DIR}/src/arena.c)
+include(CheckIncludeFiles)
+check_include_files(linux/aio_abi.h HAVE_AIO)
+if(NOT HAVE_AIO)
+  message(FATAL_ERROR "linux/aio_abi.h is not found!")
+endif()
+
 enable_testing()
-add_test(arena_test arena_test)
+
+function(test_unit unit file)
+  add_executable("${unit}_test" "${PROJECT_SOURCE_DIR}/test/${file}_test.c" "${PROJECT_SOURCE_DIR}/src/${file}.c")
+  add_test("${unit}_test" "${unit}_test")
+endfunction(test_unit)
+
+test_unit(arena arena)
+test_unit(queue kvengine/queue)
+target_link_libraries(queue_test pthread)
