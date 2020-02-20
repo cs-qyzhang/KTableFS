@@ -1,5 +1,5 @@
-#ifndef KTABLEFS_AIO_WAPPER_H_
-#define KTABLEFS_AIO_WAPPER_H_
+#ifndef KTABLEFS_KVENGINE_AIO_WAPPER_H_
+#define KTABLEFS_KVENGINE_AIO_WAPPER_H_
 
 #include <linux/aio_abi.h>
 #include <sys/syscall.h>
@@ -22,4 +22,4 @@ static inline int io_getevents(aio_context_t ctx, long min_nr, long max_nr,
   return syscall(__NR_io_getevents, ctx, min_nr, max_nr, events, timeout);
 }
 
-#endif // KTABLEFS_AIO_WAPPER_H_
+#endif // KTABLEFS_KVENGINE_AIO_WAPPER_H_

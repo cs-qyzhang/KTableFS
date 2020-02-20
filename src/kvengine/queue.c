@@ -47,6 +47,9 @@ void* dequeue(struct queue* que) {
   return ret;
 }
 
+/* 
+ * @data pointer to actual data, must be different
+ */
 int enqueue(struct queue* que, void* data) {
   if (queue_full(que)) {
     // die("queue full!");

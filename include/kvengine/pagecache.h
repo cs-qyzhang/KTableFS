@@ -1,12 +1,16 @@
-#ifndef KTABLEFS_PAGECACHE_H_
-#define KTABLEFS_PAGECACHE_H_
+#ifndef KTABLEFS_KVENGINE_PAGECACHE_H_
+#define KTABLEFS_KVENGINE_PAGECACHE_H_
 
 #include <sys/types.h>
+#include "kvengine/hash.h"
+
+struct index;
 
 struct lru_entry {
-  struct lru* prev;
-  struct lru* next;
+  struct lru_entry* prev;
+  struct lru_entry* next;
   char* page;
+  hash_t hash;
   int valid;
   int dirty;
 };
@@ -15,8 +19,12 @@ struct pagecache {
   struct lru_entry* newest;
   struct lru_entry* oldest;
   char* data;
+  struct index* index;
   size_t used_page;
   size_t max_page;
 };
 
-#endif // KTABLEFS_PAGECACHE_H_
+struct pagecache* pagecache_new(size_t page_nr);
+struct lru_entry* pagecache_lookup(struct pagecache* pgcache, hash_t hash);
+
+#endif // KTABLEFS_KVENGINE_PAGECACHE_H_

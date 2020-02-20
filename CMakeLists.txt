@@ -12,7 +12,7 @@ set(AIO_MAX_EVENTS 64)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS "-Wall")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG -g")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
@@ -39,9 +39,13 @@ enable_testing()
 
 function(test_unit unit file)
   add_executable("${unit}_test" "${PROJECT_SOURCE_DIR}/test/${file}_test.c" "${PROJECT_SOURCE_DIR}/src/${file}.c")
+  foreach(src IN LISTS ARGN)
+    target_sources("${unit}_test" PRIVATE "${PROJECT_SOURCE_DIR}/src/${src}.c")
+  endforeach()
   add_test("${unit}_test" "${unit}_test")
 endfunction(test_unit)
 
 test_unit(arena arena)
 test_unit(queue kvengine/queue)
 target_link_libraries(queue_test pthread)
+test_unit(btree kvengine/index/btree/btree arena)

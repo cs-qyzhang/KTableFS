@@ -1,5 +1,5 @@
-#ifndef KTABLEFS_IO_CONTEXT_H_
-#define KTABLEFS_IO_CONTEXT_H_
+#ifndef KTABLEFS_KVENGINE_IO_CONTEXT_H_
+#define KTABLEFS_KVENGINE_IO_CONTEXT_H_
 
 #include <sys/types.h>
 #include <linux/aio_abi.h>
@@ -21,4 +21,4 @@ struct io_context {
   callback_t do_at_io_finish;
 };
 
-#endif // KTABLEFS_IO_CONTEXT_H_
+#endif // KTABLEFS_KVENGINE_IO_CONTEXT_H_

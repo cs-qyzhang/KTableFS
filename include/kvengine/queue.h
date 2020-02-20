@@ -1,5 +1,5 @@
-#ifndef KTABLEFS_QUEUE_H_
-#define KTABLEFS_QUEUE_H_
+#ifndef KTABLEFS_KVENGINE_QUEUE_H_
+#define KTABLEFS_KVENGINE_QUEUE_H_
 
 #include <sys/types.h>
 
@@ -13,4 +13,4 @@ void* dequeue(struct queue* que);
 int enqueue(struct queue* que, void* data);
 size_t queue_size(struct queue* que) __attribute__ ((warn_unused_result));
 
-#endif // KTABLEFS_QUEUE_H_
+#endif // KTABLEFS_KVENGINE_QUEUE_H_
