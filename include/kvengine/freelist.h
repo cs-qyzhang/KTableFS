@@ -1,0 +1,11 @@
+#ifndef KTABLEFS_KVENGINE_FREELIST_H_
+#define KTABLEFS_KVENGINE_FREELIST_H_
+
+struct freelist;
+struct arena;
+
+struct freelist* freelist_new(struct arena* arena);
+void freelist_add(struct freelist* list, int index);
+int freelist_get(struct freelist* list);
+
+#endif // KTABLEFS_KVENGINE_FREELIST_H_

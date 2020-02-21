@@ -158,7 +158,7 @@ static void btree_node_split(struct btree_node* node) {
 }
 
 static void btree_node_merge_(struct btree_node* left,
-                             struct btree_node* right) {
+                              struct btree_node* right) {
   Assert(left && right && left->next == right);
   int order = left->tree->order;
   struct btree_node* parent = left->parent;
@@ -208,23 +208,38 @@ static void btree_node_merge_(struct btree_node* left,
     left->size = 2 * order;
     parent->size -= 1;
 
+    if (parent->size == 0) {
+      // root node empty, change root node to left
+      left->tree->root = left;
+      left->parent = NULL;
+      return;
+    }
+
     btree_node_merge(parent);
   } else if (left->size == order - 1) {
-    struct pair* pos = parent->head;
-    struct btree_node* child_pos = parent->child;
-    while (child_pos->next != left) {
-      pos = pos->next;
-      child_pos = child_pos->next;
-    }
     struct pair* left_tail = left->head;
     while (left_tail->next) {
       left_tail = left_tail->next;
     }
-    left_tail->next = pos->next;
-    pos->next = right->head;
-    right->head = right->head->next;
-    pos->next->next = left_tail->next->next;
-    left_tail->next->next = NULL;
+    if (parent->child == left) {
+      left_tail->next = parent->head;
+      parent->head = right->head;
+      right->head = right->head->next;
+      parent->head->next = left_tail->next->next;
+      left_tail->next->next = NULL;
+    } else {
+      struct pair* pos = parent->head;
+      struct btree_node* child_pos = parent->child;
+      while (child_pos->next != left) {
+        pos = pos->next;
+        child_pos = child_pos->next;
+      }
+      left_tail->next = pos->next;
+      pos->next = right->head;
+      right->head = right->head->next;
+      pos->next->next = left_tail->next->next;
+      left_tail->next->next = NULL;
+    }
 
     if (left->child) {
       struct btree_node* left_tail_child = left->child;
@@ -240,21 +255,29 @@ static void btree_node_merge_(struct btree_node* left,
     left->size += 1;
     right->size -= 1;
   } else {
-    struct pair* pos = parent->head;
-    struct btree_node* child_pos = parent->child;
-    while (child_pos->next != left) {
-      pos = pos->next;
-      child_pos = child_pos->next;
-    }
     struct pair* left_tail_before = left->head;
     while (left_tail_before->next->next) {
       left_tail_before = left_tail_before->next;
     }
-    left_tail_before->next->next = pos->next->next;
-    pos->next->next = right->head;
-    right->head = pos->next;
-    pos->next = left_tail_before->next;
-    left_tail_before->next = NULL;
+    if (parent->child == left) {
+      left_tail_before->next->next = parent->head->next;
+      parent->head->next = right->head;
+      right->head = parent->head;
+      parent->head = left_tail_before->next;
+      left_tail_before->next = NULL;
+    } else {
+      struct pair* pos = parent->head;
+      struct btree_node* child_pos = parent->child;
+      while (child_pos->next != left) {
+        pos = pos->next;
+        child_pos = child_pos->next;
+      }
+      left_tail_before->next->next = pos->next->next;
+      pos->next->next = right->head;
+      right->head = pos->next;
+      pos->next = left_tail_before->next;
+      left_tail_before->next = NULL;
+    }
 
     if (left->child) {
       struct btree_node* left_tail_before_child = left->child;
@@ -288,8 +311,14 @@ static void btree_node_merge(struct btree_node* node) {
   }
 }
 
+/*
+ * create btree
+ *
+ * number of data in btree node is between [order, 2 * order]
+ */
 struct btree* btree_new(int order) {
-  assert(order > 0);
+  // if order less than 2, btree_node_merge_ maybe fail
+  assert(order > 2);
   struct btree* tree = malloc(sizeof(*tree));
   tree->order = order;
   tree->size = 0;

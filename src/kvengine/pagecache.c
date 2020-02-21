@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
 #include "kvengine/pagecache.h"
 #include "kvengine/index.h"
@@ -95,4 +96,12 @@ struct lru_entry* pagecache_lookup(struct pagecache* pgcache, hash_t hash) {
   }
   lru_update_(pgcache, lru);
   return lru;
+}
+
+inline void pagecache_write(struct lru_entry* lru, int page_offset,
+                            void* data, size_t size) {
+  // TODO: write to disk?
+  Assert(lru && lru->page && lru->valid);
+  lru->dirty = 1;
+  memcpy(&lru->page[page_offset], data, size);
 }
