@@ -16,7 +16,8 @@ struct slab {
   int fd;
 };
 
-void* slab_read_item(struct slab* slab, int idx);
-int slab_write_item(struct slab* slab, int idx, void* item, size_t size);
+void slab_read_item(struct slab* slab, int index, struct io_context* ctx);
+void slab_write_item(struct slab* slab, int index, void* item, size_t size, struct io_context* ctx);
+int slab_get_free_index(struct slab* slab);
 
 #endif // KTABLEFS_KVENGINE_SLAB_H_

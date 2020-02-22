@@ -1,9 +1,10 @@
 #ifndef KTABLEFS_KVENGINE_KV_EVENT_H_
 #define KTABLEFS_KVENGINE_KV_EVENT_H_
 
+#include "kvengine/key.h"
+
 struct kv_event {
-  void* value;
-  size_t value_size;
+  struct value value;
   size_t sequence;
   int return_code;
 };

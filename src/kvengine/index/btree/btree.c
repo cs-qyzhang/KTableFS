@@ -16,7 +16,7 @@ struct btree_node {
   struct btree_node* next;
   struct btree* tree;
   struct pair {
-    hash_t key;
+    struct key* key;
     void* value;
     struct pair* next;
   }* head;
@@ -26,20 +26,25 @@ struct btree_node {
 struct btree {
   struct btree_node* root;
   struct arena* arena;
+  key_cmp_t key_cmp;
   int order;
   size_t size;
 };
+
+#define key_less(a, b)    (node->tree->key_cmp((a), (b)) < 0)
+#define key_greater(a, b) (node->tree->key_cmp((a), (b)) > 0)
+#define key_equal(a, b)   (node->tree->key_cmp((a), (b)) == 0)
 
 /*
  * return the biggest pair which less than key.
  * if node size is 0 or all pair are bigger than key, return NULL 
  */
-static struct pair* btree_node_find(struct btree_node* node, hash_t key) {
-  if (node->head == NULL || node->head->key > key) {
+static struct pair* btree_node_find(struct btree_node* node, struct key* key) {
+  if (node->head == NULL || key_greater(node->head->key, key)) {
     return NULL;
   }
   struct pair* pos = node->head;
-  while (pos->next && pos->next->key < key) {
+  while (pos->next && key_less(pos->next->key, key)) {
     pos = pos->next;
   }
   return pos;
@@ -53,7 +58,7 @@ static int btree_node_insert(struct btree_node* node, struct pair* new_pair) {
     new_pair->next = node->head;
     node->head = new_pair;
   } else {
-    Assert(pos->next == NULL || pos->next->key != new_pair->key);
+    Assert(pos->next == NULL || !key_equal(pos->next->key, new_pair->key));
     new_pair->next = pos->next;
     pos->next = new_pair;
   }
@@ -63,12 +68,12 @@ static int btree_node_insert(struct btree_node* node, struct pair* new_pair) {
 }
 
 static void btree_node_merge(struct btree_node* node);
-static int btree_node_remove(struct btree_node* node, hash_t key) {
+static int btree_node_remove(struct btree_node* node, struct key* key) {
   Assert(node->child == NULL);
   if (node->size == 0) {
     return -1;
   }
-  if (node->head->key == key) {
+  if (key_equal(node->head->key, key)) {
     node->head = node->head->next;
     node->size -= 1;
     btree_node_merge(node);
@@ -76,10 +81,10 @@ static int btree_node_remove(struct btree_node* node, hash_t key) {
   }
 
   struct pair* pos = node->head;
-  while (pos->next && pos->next->key < key) {
+  while (pos->next && key_less(pos->next->key, key)) {
     pos = pos->next;
   }
-  if (pos->next == NULL || pos->next->key != key) {
+  if (pos->next == NULL || !key_equal(pos->next->key, key)) {
     return -1;
   } else {
     pos->next = pos->next->next;
@@ -316,12 +321,13 @@ static void btree_node_merge(struct btree_node* node) {
  *
  * number of data in btree node is between [order, 2 * order]
  */
-struct btree* btree_new(int order) {
+struct btree* btree_new(int order, key_cmp_t key_cmp) {
   // if order less than 2, btree_node_merge_ maybe fail
   assert(order > 2);
   struct btree* tree = malloc(sizeof(*tree));
   tree->order = order;
   tree->size = 0;
+  tree->key_cmp = key_cmp;
   tree->arena = arena_new();
   tree->root = arena_allocate(tree->arena, sizeof(*tree->root));
   tree->root->size = 0;
@@ -346,16 +352,16 @@ void btree_destroy(struct btree* tree) {
  * @value if find, return key's value
  * @return 1 if find, 0 if not
  */
-static int btree_lookup_(struct btree* tree, hash_t key,
+static int btree_lookup_(struct btree* tree, struct key* key,
                          struct btree_node** leaf, void** value) {
   struct btree_node* node = tree->root;
   while (node) {
     if (node->child == NULL) {
       struct pair* pos = node->head;
-      while (pos && pos->key < key) {
+      while (pos && key_less(pos->key, key)) {
         pos = pos->next;
       }
-      if (pos && pos->key == key) {
+      if (pos && key_equal(pos->key, key)) {
         *leaf = node;
         *value = pos->value;
         return 1;
@@ -366,11 +372,11 @@ static int btree_lookup_(struct btree* tree, hash_t key,
     } else {
       struct pair* pos = node->head;
       struct btree_node* child = node->child;
-      while (pos && pos->key < key) {
+      while (pos && key_less(pos->key, key)) {
         pos = pos->next;
         child = child->next;
       }
-      if (pos && pos->key == key) {
+      if (pos && key_equal(pos->key, key)) {
         *leaf = node;
         *value = pos->value;
         return 1;
@@ -382,7 +388,7 @@ static int btree_lookup_(struct btree* tree, hash_t key,
   return 0;
 }
 
-void* btree_lookup(struct btree* tree, hash_t key) {
+void* btree_lookup(struct btree* tree, struct key* key) {
   struct btree_node* leaf;
   void* value;
   if (btree_lookup_(tree, key, &leaf, &value)) {
@@ -392,7 +398,7 @@ void* btree_lookup(struct btree* tree, hash_t key) {
   }
 }
 
-int btree_insert(struct btree* tree, hash_t key, void* value) {
+int btree_insert(struct btree* tree, struct key* key, void* value) {
   struct btree_node* leaf;
   void* val;
   if (btree_lookup_(tree, key, &leaf, &val)) {
@@ -407,7 +413,7 @@ int btree_insert(struct btree* tree, hash_t key, void* value) {
   }
 }
 
-int btree_remove(struct btree* tree, hash_t key) {
+int btree_remove(struct btree* tree, struct key* key) {
   struct btree_node* node;
   void* value;
   if (btree_lookup_(tree, key, &node, &value)) {
@@ -416,7 +422,7 @@ int btree_remove(struct btree* tree, hash_t key) {
     } else {
       struct btree_node* child = node->child;
       struct pair* pos = node->head;
-      while (pos->key != key) {
+      while (!key_equal(pos->key, key)) {
         pos = pos->next;
         child = child->next;
       }

@@ -3,6 +3,9 @@
 #include <assert.h>
 #include "kvengine/pagecache.h"
 #include "kvengine/index.h"
+#include "kvengine/io_context.h"
+#include "kvengine/kv_request.h"
+#include "kvengine/kv_event.h"
 #include "ktablefs_config.h"
 
 struct pagecache* pagecache_new(size_t page_nr) {
@@ -98,10 +101,78 @@ struct lru_entry* pagecache_lookup(struct pagecache* pgcache, hash_t hash) {
   return lru;
 }
 
-inline void pagecache_write(struct lru_entry* lru, int page_offset,
-                            void* data, size_t size) {
-  // TODO: write to disk?
-  Assert(lru && lru->page && lru->valid);
-  lru->dirty = 1;
-  memcpy(&lru->page[page_offset], data, size);
+// callback function
+void pagecache_insert_index(struct io_context* ctx) {
+  index_insert(ctx->pgcache->index, ctx->lru->hash, ctx->lru);
+}
+
+void kv_event_enqueue(struct kv_event* event, int thread_idx);
+
+void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, void* data, size_t size, struct io_context* ctx) {
+  struct lru_entry* lru;
+  lru = index_lookup(pgcache->index, hash);
+  if (lru) {
+    void* item = &lru->page[page_offset];
+    item_to_kv(item, NULL, &ctx->kv_event->value);
+    ctx->kv_event->return_code = 0;
+    kv_event_enqueue(ctx->kv_event, ctx->thread_index);
+    return;
+  } else {
+    lru = pagecache_find_free_page_(pgcache);
+    io_read_page(hash, lru->page);
+    lru->hash = hash;
+    lru->valid = 0;
+    lru->dirty = 0;
+
+    int fd;
+    int page_index;
+    get_page_from_hash(hash, &fd, &page_index);
+
+    ctx->page_offset = page_offset;
+
+    ctx->iocb = malloc(sizeof(*ctx->iocb));
+    memset(ctx->iocb, 0, sizeof(*ctx->iocb));
+    ctx->iocb->aio_buf = lru->page;
+    ctx->iocb->aio_fildes = fd;
+    ctx->iocb->aio_offset = PAGE_SIZE * page_index;
+    ctx->iocb->aio_nbytes = PAGE_SIZE;
+    ctx->iocb->aio_lio_opcode = IOCB_CMD_PREAD;
+    io_context_insert_callback(ctx->do_at_io_wait, pagecache_insert_index);
+    io_context_enqueue(ctx);
+  }
+}
+
+// callback function
+void pagecache_write(struct io_context* ctx) {
+  memcpy(&ctx->lru->page[ctx->iocb->aio_offset], ctx->iocb->aio_buf, ctx->iocb->aio_nbytes);
+}
+
+void io_context_enqueue(struct io_context* ctx);
+
+/*
+ * write page to disk.
+ * if page already in page cache, need to update data in page cache
+ * if page doesn't in page cache, directly write to disk.
+ */
+void page_write(struct pagecache* pgcache, hash_t hash, size_t page_offset, void* data, size_t size, struct io_context* ctx) {
+  struct lru_entry* lru;
+  lru = index_lookup(pgcache->index, hash);
+  if (lru) {
+    ctx->lru = lru;
+    io_context_insert_callback(ctx->do_at_io_wait, pagecache_write);
+    lru_update_(pgcache, lru);
+  }
+
+  int fd;
+  int page_index;
+  get_page_from_hash(hash, &fd, &page_index);
+
+  ctx->iocb = malloc(sizeof(*ctx->iocb));
+  memset(ctx->iocb, 0, sizeof(*ctx->iocb));
+  ctx->iocb->aio_buf = data;
+  ctx->iocb->aio_fildes = fd;
+  ctx->iocb->aio_offset = PAGE_SIZE * page_index;
+  ctx->iocb->aio_nbytes = size;
+  ctx->iocb->aio_lio_opcode = IOCB_CMD_PWRITE;
+  io_context_enqueue(ctx);
 }
