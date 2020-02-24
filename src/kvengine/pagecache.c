@@ -1,12 +1,27 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <assert.h>
+#include "kvengine/kvengine.h"
 #include "kvengine/pagecache.h"
 #include "kvengine/index.h"
+#include "kvengine/item.h"
 #include "kvengine/io_context.h"
-#include "kvengine/kv_request.h"
-#include "kvengine/kv_event.h"
+#include "kvengine/io_worker.h"
 #include "ktablefs_config.h"
+
+#ifdef DEBUG
+#include <assert.h>
+#define Assert(expr)  assert(expr)
+#else // DEBUG
+#define Assert(expr)
+#endif
+
+int hash_t_comparator(void* a, void* b) {
+  hash_t hash1 = (hash_t)a;
+  hash_t hash2 = (hash_t)b;
+  return (hash1 < hash2) ? -1 : (hash1 == hash2 ? 0 : 1);
+}
 
 struct pagecache* pagecache_new(size_t page_nr) {
   assert(page_nr > 0);
@@ -15,13 +30,13 @@ struct pagecache* pagecache_new(size_t page_nr) {
   pgcache->data = aligned_alloc(PAGE_SIZE, PAGE_SIZE * page_nr);
   if (pgcache->data == NULL) {
     // TODO
-    die("page cache malloc failed! please try a smaller page cache size!");
+    //die("page cache malloc failed! please try a smaller page cache size!");
     assert(pgcache->data);
   }
-  pgcache->index = index_new();
+  pgcache->index = index_new(hash_t_comparator);
   if (pgcache->index == NULL) {
     // TODO
-    die("page cache can't build index!");
+    //die("page cache can't build index!");
   }
   pgcache->newest = NULL;
   pgcache->oldest = NULL;
@@ -63,10 +78,7 @@ static struct lru_entry* pagecache_find_free_page_(struct pagecache* pgcache) {
   if (pgcache->used_page == pgcache->max_page) {
     // page cache full, use the oldest page
     lru = pgcache->oldest;
-    index_remove(pgcache->index, lru->hash);
-    if (lru->dirty) {
-      io_write_page(lru->hash, lru->page);
-    }
+    index_remove(pgcache->index, (void*)(uintptr_t)lru->hash);
   } else {
     // page cache has free page
     // TODO: use arena?
@@ -75,6 +87,7 @@ static struct lru_entry* pagecache_find_free_page_(struct pagecache* pgcache) {
     lru->next = NULL;
     lru->prev = NULL;
     lru->valid = 0;
+    lru->page = pgcache->data + (pgcache->used_page++ * PAGE_SIZE);
   }
   return lru;
 }
@@ -84,55 +97,57 @@ static struct lru_entry* pagecache_find_free_page_(struct pagecache* pgcache) {
  *
  * if the page doesn't in page cache, it will read page from disk.
  */
-struct lru_entry* pagecache_lookup(struct pagecache* pgcache, hash_t hash) {
-  struct lru_entry* lru;
-  lru = index_lookup(pgcache->index, hash);
-  if (lru) {
-    Assert(lru->hash == hash);
-  } else {
-    lru = pagecache_find_free_page_(pgcache);
-    io_read_page(hash, lru->page);
-    lru->hash = hash;
-    lru->valid = 1;
-    lru->dirty = 0;
-    index_insert(pgcache->index, hash, lru);
-  }
-  lru_update_(pgcache, lru);
-  return lru;
-}
+// struct lru_entry* pagecache_lookup(struct pagecache* pgcache, hash_t hash) {
+//   struct lru_entry* lru;
+//   lru = index_lookup(pgcache->index, hash);
+//   if (lru) {
+//     Assert(lru->hash == hash);
+//   } else {
+//     lru = pagecache_find_free_page_(pgcache);
+//     io_read_page(hash, lru->page);
+//     lru->hash = hash;
+//     lru->valid = 1;
+//     lru->dirty = 0;
+//     index_insert(pgcache->index, hash, lru);
+//   }
+//   lru_update_(pgcache, lru);
+//   return lru;
+// }
 
 // callback function
 void pagecache_insert_index(struct io_context* ctx) {
-  index_insert(ctx->pgcache->index, ctx->lru->hash, ctx->lru);
+  index_insert(ctx->thread_data->pagecache->index, (void*)(uintptr_t)ctx->lru->hash, ctx->lru);
+  lru_update_(ctx->thread_data->pagecache, ctx->lru);
 }
 
-void kv_event_enqueue(struct kv_event* event, int thread_idx);
+void kv_event_enqueue(struct kv_event* event, struct thread_data* thread_data);
 
-void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, void* data, size_t size, struct io_context* ctx) {
+void io_context_enqueue(struct io_context* ctx);
+
+void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, struct io_context* ctx) {
   struct lru_entry* lru;
-  lru = index_lookup(pgcache->index, hash);
+  lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
   if (lru) {
     void* item = &lru->page[page_offset];
     item_to_kv(item, NULL, &ctx->kv_event->value);
     ctx->kv_event->return_code = 0;
-    kv_event_enqueue(ctx->kv_event, ctx->thread_index);
+    kv_event_enqueue(ctx->kv_event, ctx->thread_data);
+    lru_update_(pgcache, lru);
     return;
   } else {
     lru = pagecache_find_free_page_(pgcache);
-    io_read_page(hash, lru->page);
     lru->hash = hash;
-    lru->valid = 0;
-    lru->dirty = 0;
 
     int fd;
     int page_index;
     get_page_from_hash(hash, &fd, &page_index);
 
+    ctx->lru = lru;
     ctx->page_offset = page_offset;
 
     ctx->iocb = malloc(sizeof(*ctx->iocb));
     memset(ctx->iocb, 0, sizeof(*ctx->iocb));
-    ctx->iocb->aio_buf = lru->page;
+    ctx->iocb->aio_buf = (uintptr_t)lru->page;
     ctx->iocb->aio_fildes = fd;
     ctx->iocb->aio_offset = PAGE_SIZE * page_index;
     ctx->iocb->aio_nbytes = PAGE_SIZE;
@@ -144,10 +159,8 @@ void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, void*
 
 // callback function
 void pagecache_write(struct io_context* ctx) {
-  memcpy(&ctx->lru->page[ctx->iocb->aio_offset], ctx->iocb->aio_buf, ctx->iocb->aio_nbytes);
+  memcpy(&ctx->lru->page[ctx->iocb->aio_offset], (void*)(uintptr_t)ctx->iocb->aio_buf, ctx->iocb->aio_nbytes);
 }
-
-void io_context_enqueue(struct io_context* ctx);
 
 /*
  * write page to disk.
@@ -156,7 +169,7 @@ void io_context_enqueue(struct io_context* ctx);
  */
 void page_write(struct pagecache* pgcache, hash_t hash, size_t page_offset, void* data, size_t size, struct io_context* ctx) {
   struct lru_entry* lru;
-  lru = index_lookup(pgcache->index, hash);
+  lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
   if (lru) {
     ctx->lru = lru;
     io_context_insert_callback(ctx->do_at_io_wait, pagecache_write);
@@ -169,9 +182,9 @@ void page_write(struct pagecache* pgcache, hash_t hash, size_t page_offset, void
 
   ctx->iocb = malloc(sizeof(*ctx->iocb));
   memset(ctx->iocb, 0, sizeof(*ctx->iocb));
-  ctx->iocb->aio_buf = data;
+  ctx->iocb->aio_buf = (uintptr_t)data;
   ctx->iocb->aio_fildes = fd;
-  ctx->iocb->aio_offset = PAGE_SIZE * page_index;
+  ctx->iocb->aio_offset = PAGE_SIZE * page_index + page_offset;
   ctx->iocb->aio_nbytes = size;
   ctx->iocb->aio_lio_opcode = IOCB_CMD_PWRITE;
   io_context_enqueue(ctx);

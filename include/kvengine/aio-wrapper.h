@@ -2,6 +2,7 @@
 #define KTABLEFS_KVENGINE_AIO_WAPPER_H_
 
 #include <linux/aio_abi.h>
+#include <unistd.h>
 #include <sys/syscall.h>
 
 static inline int io_setup(unsigned max_nr, aio_context_t *ctxp) {

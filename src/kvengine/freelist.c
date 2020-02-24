@@ -2,6 +2,13 @@
 #include "kvengine/freelist.h"
 #include "arena.h"
 
+#ifdef DEBUG
+#include <assert.h>
+#define Assert(expr)  assert(expr)
+#else // DEBUG
+#define Assert(expr)
+#endif
+
 struct list_node {
   int index;
   struct list_node* next;

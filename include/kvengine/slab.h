@@ -3,6 +3,7 @@
 
 #include <sys/types.h>
 
+struct io_context;
 struct arena;
 struct slab {
   struct pagecache* pgcache;

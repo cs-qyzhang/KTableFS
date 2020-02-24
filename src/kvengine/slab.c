@@ -32,5 +32,6 @@ int slab_get_free_index(struct slab* slab) {
   if (index == -1) {
     index = slab->max_index++;
   }
+  slab->used++;
   return index;
 }

@@ -49,3 +49,24 @@ test_unit(arena arena)
 test_unit(queue kvengine/queue)
 target_link_libraries(queue_test pthread)
 test_unit(btree kvengine/index/btree/btree arena)
+
+add_executable(kvengine_test)
+target_sources(kvengine_test
+  PRIVATE
+    "${PROJECT_SOURCE_DIR}/test/kvengine/kvengine_test.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/io_worker.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/hash.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/freelist.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/queue.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/item.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/index/btree/btree.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/index/btree/btree_index.c"
+    "${PROJECT_SOURCE_DIR}/src/arena.c"
+)
+target_link_libraries(kvengine_test pthread)
+add_test(kvengine_test kvengine_test)
+
+add_executable(aio_test "${PROJECT_SOURCE_DIR}/test/kvengine/aio_test.c")
+add_test(aio_test aio_test)

@@ -1,11 +1,23 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
 #include "btree.h"
+#include "kvengine/kvengine.h"
+
+int struct_key_comparator(void* a, void* b) {
+  struct key* key1 = a;
+  struct key* key2 = b;
+  if (key1->val == key2->val) {
+    return strcmp(key1->data, key2->data);
+  } else {
+    return (key1->val - key2->val);
+  }
+}
 
 int main(void) {
   struct btree* tree;
-  tree = btree_new(4, key_comparator);
+  tree = btree_new(4, struct_key_comparator);
 
   for (int i = 0; i < 1000000; ++i) {
     int* value = malloc(sizeof(*value));

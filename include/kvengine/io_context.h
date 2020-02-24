@@ -11,6 +11,7 @@ struct lru_entry;
 struct kv_request;
 struct kv_event;
 struct pagecache;
+struct thread_data;
 
 struct io_context {
   // aio control blocks
@@ -18,7 +19,7 @@ struct io_context {
   // aio return events
   struct io_event* event;
 
-  struct pagecache* pgcache;
+  struct thread_data* thread_data;
   struct lru_entry* lru;
   size_t page_offset;
   size_t slab_index;
@@ -31,7 +32,6 @@ struct io_context {
   callback_t do_at_io_wait[4];
   // functions called after io_getevent()
   callback_t do_at_io_finish[4];
-  int thread_index;
 };
 
 static inline void io_context_insert_callback(callback_t* callbacks,

@@ -24,9 +24,9 @@ struct pagecache {
   size_t max_page;
 };
 
+struct io_context;
 struct pagecache* pagecache_new(size_t page_nr);
-struct lru_entry* pagecache_lookup(struct pagecache* pgcache, hash_t hash);
-inline void pagecache_write(struct lru_entry* lru, int page_offset,
-                            void* data, size_t size);
+void page_write(struct pagecache* pgcache, hash_t hash, size_t page_offset, void* data, size_t size, struct io_context* ctx);
+void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, struct io_context* ctx);
 
 #endif // KTABLEFS_KVENGINE_PAGECACHE_H_

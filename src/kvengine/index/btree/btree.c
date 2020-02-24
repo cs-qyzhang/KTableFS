@@ -16,7 +16,7 @@ struct btree_node {
   struct btree_node* next;
   struct btree* tree;
   struct pair {
-    struct key* key;
+    void * key;
     void* value;
     struct pair* next;
   }* head;
@@ -39,7 +39,7 @@ struct btree {
  * return the biggest pair which less than key.
  * if node size is 0 or all pair are bigger than key, return NULL 
  */
-static struct pair* btree_node_find(struct btree_node* node, struct key* key) {
+static struct pair* btree_node_find(struct btree_node* node, void* key) {
   if (node->head == NULL || key_greater(node->head->key, key)) {
     return NULL;
   }
@@ -68,7 +68,7 @@ static int btree_node_insert(struct btree_node* node, struct pair* new_pair) {
 }
 
 static void btree_node_merge(struct btree_node* node);
-static int btree_node_remove(struct btree_node* node, struct key* key) {
+static int btree_node_remove(struct btree_node* node, void* key) {
   Assert(node->child == NULL);
   if (node->size == 0) {
     return -1;
@@ -352,7 +352,7 @@ void btree_destroy(struct btree* tree) {
  * @value if find, return key's value
  * @return 1 if find, 0 if not
  */
-static int btree_lookup_(struct btree* tree, struct key* key,
+static int btree_lookup_(struct btree* tree, void* key,
                          struct btree_node** leaf, void** value) {
   struct btree_node* node = tree->root;
   while (node) {
@@ -388,7 +388,7 @@ static int btree_lookup_(struct btree* tree, struct key* key,
   return 0;
 }
 
-void* btree_lookup(struct btree* tree, struct key* key) {
+void* btree_lookup(struct btree* tree, void* key) {
   struct btree_node* leaf;
   void* value;
   if (btree_lookup_(tree, key, &leaf, &value)) {
@@ -398,7 +398,7 @@ void* btree_lookup(struct btree* tree, struct key* key) {
   }
 }
 
-int btree_insert(struct btree* tree, struct key* key, void* value) {
+int btree_insert(struct btree* tree, void* key, void* value) {
   struct btree_node* leaf;
   void* val;
   if (btree_lookup_(tree, key, &leaf, &val)) {
@@ -413,7 +413,7 @@ int btree_insert(struct btree* tree, struct key* key, void* value) {
   }
 }
 
-int btree_remove(struct btree* tree, struct key* key) {
+int btree_remove(struct btree* tree, void* key) {
   struct btree_node* node;
   void* value;
   if (btree_lookup_(tree, key, &node, &value)) {
