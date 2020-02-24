@@ -1,9 +1,10 @@
 #include "btree.h"
 #include "kvengine/index.h"
 #include "kvengine/kvengine.h"
+#include "ktablefs_config.h"
 
 struct index* index_new(key_cmp_t comparator) {
-  return (struct index*)btree_new(4, comparator);
+  return (struct index*)btree_new(BTREE_ORDER, comparator);
 }
 
 void index_destroy(struct index* index) {

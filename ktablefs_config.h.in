@@ -4,3 +4,4 @@
 #define ARENA_NB_BLOCKS         @ARENA_NB_BLOCKS@
 #define ARENA_BLOCK_SIZE        @ARENA_BLOCK_SIZE@
 #define AIO_MAX_EVENTS          @AIO_MAX_EVENTS@
+#define BTREE_ORDER             @BTREE_ORDER@

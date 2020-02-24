@@ -40,14 +40,26 @@ int main(void) {
     // printf("add return: %d, sequence: %ld, st_uid: %d\n", event->return_code, event->sequence, event->value.stat.st_uid);
   }
 
-  for (int i = 0; i < 100000; ++i) {
-    request->type = GET;
+  for (int i = 0; i < 100000; i += 2) {
+    request->type = UPDATE;
+    request->value.stat.st_uid = i + 20;
     request->key.val = i;
     sequence = kv_submit(request);
+    // printf("add submit sequence: %d\n", sequence);
     event = kv_getevent(sequence);
     assert(event->return_code == 0);
     assert(event->sequence == sequence);
-    assert(event->value.stat.st_uid == i + 10);
+    // printf("add return: %d, sequence: %ld, st_uid: %d\n", event->return_code, event->sequence, event->value.stat.st_uid);
+  }
+
+  for (int i = 1; i < 1000; i += 2) {
+    request->type = DELETE;
+    request->key.val = i;
+    sequence = kv_submit(request);
+    // printf("add submit sequence: %d\n", sequence);
+    event = kv_getevent(sequence);
+    assert(event->return_code == 0);
+    assert(event->sequence == sequence);
   }
 
   for (int i = 0; i < 100000; ++i) {
@@ -55,9 +67,19 @@ int main(void) {
     request->key.val = i;
     sequence = kv_submit(request);
     event = kv_getevent(sequence);
-    assert(event->return_code == 0);
+    if (i % 2 && i < 1000) {
+      assert(event->return_code == -1);
+    } else {
+      assert(event->return_code == 0);
+    }
     assert(event->sequence == sequence);
-    assert(event->value.stat.st_uid == i + 10);
+    if (i % 2) {
+      if (i > 1000) {
+        assert(event->value.stat.st_uid == i + 10);
+      }
+    } else {
+      assert(event->value.stat.st_uid == i + 20);
+    }
   }
 
   io_worker_destroy();

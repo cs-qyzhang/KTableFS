@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include "kvengine/io_worker.h"
 #include "kvengine/slab.h"
 #include "kvengine/pagecache.h"
 #include "kvengine/hash.h"
@@ -34,4 +35,10 @@ int slab_get_free_index(struct slab* slab) {
   }
   slab->used++;
   return index;
+}
+
+// callback function
+void slab_remove_item(struct io_context* ctx) {
+  ctx->thread_data->slab->used--;
+  freelist_add(ctx->thread_data->slab->freelist, ctx->slab_index);
 }

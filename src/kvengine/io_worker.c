@@ -49,6 +49,11 @@ void index_insert_wrapper(struct io_context* ctx) {
 }
 
 // callback function
+void index_remove_wrapper(struct io_context* ctx) {
+  index_remove(ctx->thread_data->index, &ctx->kv_request->key);
+}
+
+// callback function
 void kv_add_finish(struct io_context* ctx) {
   ctx->kv_event->return_code = 0;
   kv_event_enqueue(ctx->kv_event, ctx->thread_data);
@@ -58,9 +63,34 @@ void kv_add_finish(struct io_context* ctx) {
 void kv_get_finish(struct io_context* ctx) {
   ctx->lru->valid = 1;
   void* item = &ctx->lru->page[ctx->page_offset];
+  struct item_head* item_head = item;
+  Assert(item_head->valid == -1);
   item_to_kv(item, NULL, &ctx->kv_event->value);
   ctx->kv_event->return_code = 0;
   kv_event_enqueue(ctx->kv_event, ctx->thread_data);
+}
+
+// callback function
+void kv_update_finish(struct io_context* ctx) {
+  ctx->kv_event->return_code = 0;
+  kv_event_enqueue(ctx->kv_event, ctx->thread_data);
+}
+
+// callback function
+void kv_delete_finish(struct io_context* ctx) {
+  ctx->kv_event->return_code = 0;
+  kv_event_enqueue(ctx->kv_event, ctx->thread_data);
+}
+
+struct io_context* io_context_new(struct thread_data* thread_data, struct kv_request* req, int slab_idx) {
+  struct io_context* ctx = malloc(sizeof(*ctx));
+  memset(ctx, 0, sizeof(*ctx));
+  ctx->thread_data = thread_data;
+  ctx->kv_request = req;
+  ctx->kv_event = malloc(sizeof(*ctx->kv_event));
+  ctx->kv_event->sequence = ctx->kv_request->sequence;
+  ctx->slab_index = slab_idx;
+  return ctx;
 }
 
 void process_add_request(struct kv_request* req, struct thread_data* thread_data) {
@@ -78,13 +108,7 @@ void process_add_request(struct kv_request* req, struct thread_data* thread_data
   size_t item_size = kv_to_item(&req->key, &req->value, &item);
   int slab_idx = slab_get_free_index(thread_data->slab);
 
-  struct io_context* ctx = malloc(sizeof(*ctx));
-  memset(ctx, 0, sizeof(*ctx));
-  ctx->thread_data = thread_data;
-  ctx->kv_request = req;
-  ctx->kv_event = malloc(sizeof(*ctx->kv_event));
-  ctx->kv_event->sequence = ctx->kv_request->sequence;
-  ctx->slab_index = slab_idx;
+  struct io_context* ctx = io_context_new(thread_data, req, slab_idx);
   io_context_insert_callback(ctx->do_at_io_wait, index_insert_wrapper);
   io_context_insert_callback(ctx->do_at_io_finish, kv_add_finish);
 
@@ -103,16 +127,55 @@ void process_get_request(struct kv_request* req, struct thread_data* thread_data
 
   int slab_idx = (int)(uintptr_t)val - 1;
 
-  struct io_context* ctx = malloc(sizeof(*ctx));
-  memset(ctx, 0, sizeof(*ctx));
-  ctx->thread_data = thread_data;
-  ctx->kv_request = req;
-  ctx->kv_event = malloc(sizeof(*ctx->kv_event));
-  ctx->kv_event->sequence = ctx->kv_request->sequence;
-  ctx->slab_index = slab_idx;
+  struct io_context* ctx = io_context_new(thread_data, req, slab_idx);
   io_context_insert_callback(ctx->do_at_io_finish, kv_get_finish);
 
   slab_read_item(thread_data->slab, slab_idx, ctx);
+}
+
+void process_update_request(struct kv_request* req, struct thread_data* thread_data) {
+  void* val = index_lookup(thread_data->index, &req->key);
+  if (!val) {
+    struct kv_event* event = malloc(sizeof(*event));
+    event->sequence = req->sequence;
+    event->return_code = -1;
+    enqueue(thread_data->kv_event_queue, event);
+    return;
+  }
+
+  int slab_idx = (int)(uintptr_t)val - 1;
+
+  void* item;
+  size_t item_size = kv_to_item(&req->key, &req->value, &item);
+
+  struct io_context* ctx = io_context_new(thread_data, req, slab_idx);
+  io_context_insert_callback(ctx->do_at_io_finish, kv_update_finish);
+
+  slab_write_item(thread_data->slab, slab_idx, item, item_size, ctx);
+}
+
+void process_delete_request(struct kv_request* req, struct thread_data* thread_data) {
+  void* val = index_lookup(thread_data->index, &req->key);
+  if (!val) {
+    struct kv_event* event = malloc(sizeof(*event));
+    event->sequence = req->sequence;
+    event->return_code = -1;
+    enqueue(thread_data->kv_event_queue, event);
+    return;
+  }
+
+  int slab_idx = (int)(uintptr_t)val - 1;
+
+  // only change item's valid to 0
+  char* item = malloc(1);
+  item[0] = 0;
+
+  struct io_context* ctx = io_context_new(thread_data, req, slab_idx);
+  io_context_insert_callback(ctx->do_at_io_wait, index_remove_wrapper);
+  io_context_insert_callback(ctx->do_at_io_wait, slab_remove_item);
+  io_context_insert_callback(ctx->do_at_io_finish, kv_delete_finish);
+
+  slab_write_item(thread_data->slab, slab_idx, item, 1, ctx);
 }
 
 int worker_deque_request(struct thread_data* thread_data) {
@@ -135,8 +198,10 @@ int worker_deque_request(struct thread_data* thread_data) {
         process_get_request(req, thread_data);
         break;
       case UPDATE:
+        process_update_request(req, thread_data);
         break;
       case DELETE:
+        process_delete_request(req, thread_data);
         break;
       case SCAN:
         break;

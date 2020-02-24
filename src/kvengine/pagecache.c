@@ -92,28 +92,6 @@ static struct lru_entry* pagecache_find_free_page_(struct pagecache* pgcache) {
   return lru;
 }
 
-/*
- * lookup page in page cache use its hash
- *
- * if the page doesn't in page cache, it will read page from disk.
- */
-// struct lru_entry* pagecache_lookup(struct pagecache* pgcache, hash_t hash) {
-//   struct lru_entry* lru;
-//   lru = index_lookup(pgcache->index, hash);
-//   if (lru) {
-//     Assert(lru->hash == hash);
-//   } else {
-//     lru = pagecache_find_free_page_(pgcache);
-//     io_read_page(hash, lru->page);
-//     lru->hash = hash;
-//     lru->valid = 1;
-//     lru->dirty = 0;
-//     index_insert(pgcache->index, hash, lru);
-//   }
-//   lru_update_(pgcache, lru);
-//   return lru;
-// }
-
 // callback function
 void pagecache_insert_index(struct io_context* ctx) {
   index_insert(ctx->thread_data->pagecache->index, (void*)(uintptr_t)ctx->lru->hash, ctx->lru);
@@ -121,7 +99,6 @@ void pagecache_insert_index(struct io_context* ctx) {
 }
 
 void kv_event_enqueue(struct kv_event* event, struct thread_data* thread_data);
-
 void io_context_enqueue(struct io_context* ctx);
 
 void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, struct io_context* ctx) {
@@ -159,7 +136,7 @@ void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, struc
 
 // callback function
 void pagecache_write(struct io_context* ctx) {
-  memcpy(&ctx->lru->page[ctx->iocb->aio_offset], (void*)(uintptr_t)ctx->iocb->aio_buf, ctx->iocb->aio_nbytes);
+  memcpy(&ctx->lru->page[ctx->page_offset], (void*)(uintptr_t)ctx->iocb->aio_buf, ctx->iocb->aio_nbytes);
 }
 
 /*
@@ -172,6 +149,7 @@ void page_write(struct pagecache* pgcache, hash_t hash, size_t page_offset, void
   lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
   if (lru) {
     ctx->lru = lru;
+    ctx->page_offset = page_offset;
     io_context_insert_callback(ctx->do_at_io_wait, pagecache_write);
     lru_update_(pgcache, lru);
   }
