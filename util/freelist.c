@@ -1,6 +1,6 @@
 #include <stdlib.h>
-#include "kvengine/freelist.h"
-#include "arena.h"
+#include "util/freelist.h"
+#include "util/arena.h"
 
 #ifdef DEBUG
 #include <assert.h>

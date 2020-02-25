@@ -1,5 +1,5 @@
-#include "btree.h"
-#include "kvengine/index.h"
+#include "util/btree.h"
+#include "util/index.h"
 #include "kvengine/kvengine.h"
 #include "ktablefs_config.h"
 

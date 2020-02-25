@@ -39,17 +39,17 @@ endif()
 enable_testing()
 
 function(test_unit unit file)
-  add_executable("${unit}_test" "${PROJECT_SOURCE_DIR}/test/${file}_test.c" "${PROJECT_SOURCE_DIR}/src/${file}.c")
+  add_executable("${unit}_test" "${PROJECT_SOURCE_DIR}/test/${file}_test.c" "${PROJECT_SOURCE_DIR}/${file}.c")
   foreach(src IN LISTS ARGN)
-    target_sources("${unit}_test" PRIVATE "${PROJECT_SOURCE_DIR}/src/${src}.c")
+    target_sources("${unit}_test" PRIVATE "${PROJECT_SOURCE_DIR}/${src}.c")
   endforeach()
   add_test("${unit}_test" "${unit}_test")
 endfunction(test_unit)
 
-test_unit(arena arena)
-test_unit(queue kvengine/queue)
+test_unit(arena util/arena)
+test_unit(queue util/queue)
 target_link_libraries(queue_test pthread)
-test_unit(btree kvengine/index/btree/btree arena)
+test_unit(btree util/index/btree/btree util/arena)
 
 add_executable(kvengine_test)
 target_sources(kvengine_test
@@ -57,14 +57,14 @@ target_sources(kvengine_test
     "${PROJECT_SOURCE_DIR}/test/kvengine/kvengine_test.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/io_worker.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/hash.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/freelist.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/queue.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/item.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/index/btree/btree.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/index/btree/btree_index.c"
-    "${PROJECT_SOURCE_DIR}/src/arena.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
+    "${PROJECT_SOURCE_DIR}/util/hash.c"
+    "${PROJECT_SOURCE_DIR}/util/freelist.c"
+    "${PROJECT_SOURCE_DIR}/util/queue.c"
+    "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
+    "${PROJECT_SOURCE_DIR}/util/arena.c"
 )
 target_link_libraries(kvengine_test pthread)
 add_test(kvengine_test kvengine_test)

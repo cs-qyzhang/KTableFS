@@ -1,10 +1,10 @@
 #include <stdlib.h>
 #include <string.h>
+#include "util/hash.h"
+#include "util/freelist.h"
 #include "kvengine/io_worker.h"
 #include "kvengine/slab.h"
 #include "kvengine/pagecache.h"
-#include "kvengine/hash.h"
-#include "kvengine/freelist.h"
 #include "kvengine/io_context.h"
 #include "ktablefs_config.h"
 

@@ -1,8 +1,8 @@
-#include "arena.h"
-#include <assert.h>
 #include <stdlib.h>
-#include <time.h>
 #include <stdint.h>
+#include <assert.h>
+#include <time.h>
+#include "util/arena.h"
 
 static void fill(char* ptr, size_t size) {
   for (int i = 0; i < size; ++i) {

@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <assert.h>
-#include "btree.h"
-#include "arena.h"
+#include "util/btree.h"
+#include "util/arena.h"
 
 #ifdef DEBUG
 #define Assert(expr)  assert(expr)

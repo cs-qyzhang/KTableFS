@@ -2,9 +2,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <assert.h>
+#include "util/index.h"
 #include "kvengine/kvengine.h"
 #include "kvengine/pagecache.h"
-#include "kvengine/index.h"
 #include "kvengine/item.h"
 #include "kvengine/io_context.h"
 #include "kvengine/io_worker.h"

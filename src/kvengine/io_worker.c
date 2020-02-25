@@ -7,17 +7,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include "util/queue.h"
+#include "util/freelist.h"
+#include "util/index.h"
+#include "util/arena.h"
 #include "kvengine/kvengine.h"
 #include "kvengine/item.h"
-#include "kvengine/index.h"
 #include "kvengine/pagecache.h"
-#include "kvengine/queue.h"
 #include "kvengine/aio-wrapper.h"
 #include "kvengine/io_context.h"
 #include "kvengine/slab.h"
 #include "kvengine/io_worker.h"
-#include "kvengine/freelist.h"
-#include "arena.h"
 #include "ktablefs_config.h"
 
 #ifdef DEBUG

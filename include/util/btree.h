@@ -1,7 +1,7 @@
 #ifndef KTABLEFS_KVENGINE_BTREE_H_
 #define KTABLEFS_KVENGINE_BTREE_H_
 
-#include "kvengine/index.h"
+#include "util/index.h"
 
 struct btree;
 

@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "btree.h"
+#include "util/btree.h"
 #include "kvengine/kvengine.h"
 
 int struct_key_comparator(void* a, void* b) {

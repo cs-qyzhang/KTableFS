@@ -2,7 +2,7 @@
 #define KTABLEFS_KVENGINE_PAGECACHE_H_
 
 #include <sys/types.h>
-#include "kvengine/hash.h"
+#include "util/hash.h"
 
 struct index;
 

@@ -1,8 +1,8 @@
 #include <stdio.h>
-#include <pthread.h>
 #include <assert.h>
 #include <stdlib.h>
-#include "kvengine/queue.h"
+#include <pthread.h>
+#include "util/queue.h"
 
 struct queue* que;
 pthread_t enqueue_thread, dequeue_thread;

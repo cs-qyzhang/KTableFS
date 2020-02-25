@@ -7,7 +7,7 @@
  */
 #include <stdlib.h>
 #include <stdint.h>
-#include "arena.h"
+#include "util/arena.h"
 #include "ktablefs_config.h"
 
 #ifdef DEBUG
