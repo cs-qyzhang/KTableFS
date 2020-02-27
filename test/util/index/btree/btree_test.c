@@ -5,6 +5,11 @@
 #include "util/btree.h"
 #include "kvengine/kvengine.h"
 
+struct key {
+  int val;
+  char* data;
+};
+
 int struct_key_comparator(void* a, void* b) {
   struct key* key1 = a;
   struct key* key2 = b;

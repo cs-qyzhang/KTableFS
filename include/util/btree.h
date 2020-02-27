@@ -1,5 +1,5 @@
-#ifndef KTABLEFS_KVENGINE_BTREE_H_
-#define KTABLEFS_KVENGINE_BTREE_H_
+#ifndef KTABLEFS_UTIL_BTREE_H_
+#define KTABLEFS_UTIL_BTREE_H_
 
 #include "util/index.h"
 
@@ -11,4 +11,4 @@ int btree_insert(struct btree* tree, void* key, void* value);
 int btree_remove(struct btree* tree, void* key);
 void* btree_lookup(struct btree* tree, void* key);
 
-#endif // KTABLEFS_KVENGINE_BTREE_H_
+#endif // KTABLEFS_UTIL_BTREE_H_

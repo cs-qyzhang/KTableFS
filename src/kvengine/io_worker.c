@@ -1,18 +1,16 @@
 #define _GNU_SOURCE
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <stdlib.h>
-#include <pthread.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <pthread.h>
 #include "util/queue.h"
 #include "util/freelist.h"
 #include "util/index.h"
 #include "util/arena.h"
 #include "kvengine/kvengine.h"
-#include "kvengine/item.h"
 #include "kvengine/pagecache.h"
 #include "kvengine/aio-wrapper.h"
 #include "kvengine/io_context.h"
@@ -35,6 +33,12 @@ static inline void nop() {
   for (volatile int i = 0; i < 10000; ++i) ;
 }
 
+struct kv_event* kv_event_new() {
+  struct kv_event* event = malloc(sizeof(*event));
+  event->value = NULL;
+  return event;
+}
+
 void io_context_enqueue(struct io_context* ctx) {
   enqueue(ctx->thread_data->io_context_queue, ctx);
 }
@@ -45,16 +49,16 @@ void kv_event_enqueue(struct kv_event* event, struct thread_data* thread_data) {
 
 // callback function
 void index_insert_wrapper(struct io_context* ctx) {
-  index_insert(ctx->thread_data->index, &ctx->kv_request->key, (void*)(uintptr_t)(ctx->slab_index + 1));
+  index_insert(ctx->thread_data->index, ctx->kv_request->key, (void*)(uintptr_t)(ctx->slab_index + 1));
 }
 
 // callback function
 void index_remove_wrapper(struct io_context* ctx) {
-  index_remove(ctx->thread_data->index, &ctx->kv_request->key);
+  index_remove(ctx->thread_data->index, ctx->kv_request->key);
 }
 
 // callback function
-void kv_add_finish(struct io_context* ctx) {
+void kv_put_finish(struct io_context* ctx) {
   ctx->kv_event->return_code = 0;
   kv_event_enqueue(ctx->kv_event, ctx->thread_data);
 }
@@ -63,9 +67,10 @@ void kv_add_finish(struct io_context* ctx) {
 void kv_get_finish(struct io_context* ctx) {
   ctx->lru->valid = 1;
   void* item = &ctx->lru->page[ctx->page_offset];
-  struct item_head* item_head = item;
-  Assert(item_head->valid == -1);
-  item_to_kv(item, NULL, &ctx->kv_event->value);
+  ctx->kv_event->value = malloc(value_size());
+  // item's first byte is valid flag, -1 means valid, 0 means deleted.
+  Assert(((int8_t*)item)[0] == -1);
+  item_to_kv(item, NULL, ctx->kv_event->value);
   ctx->kv_event->return_code = 0;
   kv_event_enqueue(ctx->kv_event, ctx->thread_data);
 }
@@ -87,17 +92,17 @@ struct io_context* io_context_new(struct thread_data* thread_data, struct kv_req
   memset(ctx, 0, sizeof(*ctx));
   ctx->thread_data = thread_data;
   ctx->kv_request = req;
-  ctx->kv_event = malloc(sizeof(*ctx->kv_event));
+  ctx->kv_event = kv_event_new();
   ctx->kv_event->sequence = ctx->kv_request->sequence;
   ctx->slab_index = slab_idx;
   return ctx;
 }
 
-void process_add_request(struct kv_request* req, struct thread_data* thread_data) {
-  void* val = index_lookup(thread_data->index, &req->key);
+void process_put_request(struct kv_request* req, struct thread_data* thread_data) {
+  void* val = index_lookup(thread_data->index, req->key);
   if (val) {
     // error! key already in!
-    struct kv_event* event = malloc(sizeof(*event));
+    struct kv_event* event = kv_event_new();
     event->sequence = req->sequence;
     event->return_code = -1;
     kv_event_enqueue(event, thread_data);
@@ -105,20 +110,20 @@ void process_add_request(struct kv_request* req, struct thread_data* thread_data
   }
 
   void* item;
-  size_t item_size = kv_to_item(&req->key, &req->value, &item);
+  size_t item_size = kv_to_item(req->key, req->value, &item);
   int slab_idx = slab_get_free_index(thread_data->slab);
 
   struct io_context* ctx = io_context_new(thread_data, req, slab_idx);
   io_context_insert_callback(ctx->do_at_io_wait, index_insert_wrapper);
-  io_context_insert_callback(ctx->do_at_io_finish, kv_add_finish);
+  io_context_insert_callback(ctx->do_at_io_finish, kv_put_finish);
 
   slab_write_item(thread_data->slab, slab_idx, item, item_size, ctx);
 }
 
 void process_get_request(struct kv_request* req, struct thread_data* thread_data) {
-  void* val = index_lookup(thread_data->index, &req->key);
+  void* val = index_lookup(thread_data->index, req->key);
   if (!val) {
-    struct kv_event* event = malloc(sizeof(*event));
+    struct kv_event* event = kv_event_new();
     event->sequence = req->sequence;
     event->return_code = -1;
     enqueue(thread_data->kv_event_queue, event);
@@ -134,9 +139,9 @@ void process_get_request(struct kv_request* req, struct thread_data* thread_data
 }
 
 void process_update_request(struct kv_request* req, struct thread_data* thread_data) {
-  void* val = index_lookup(thread_data->index, &req->key);
+  void* val = index_lookup(thread_data->index, req->key);
   if (!val) {
-    struct kv_event* event = malloc(sizeof(*event));
+    struct kv_event* event = kv_event_new();
     event->sequence = req->sequence;
     event->return_code = -1;
     enqueue(thread_data->kv_event_queue, event);
@@ -146,7 +151,7 @@ void process_update_request(struct kv_request* req, struct thread_data* thread_d
   int slab_idx = (int)(uintptr_t)val - 1;
 
   void* item;
-  size_t item_size = kv_to_item(&req->key, &req->value, &item);
+  size_t item_size = kv_to_item(req->key, req->value, &item);
 
   struct io_context* ctx = io_context_new(thread_data, req, slab_idx);
   io_context_insert_callback(ctx->do_at_io_finish, kv_update_finish);
@@ -155,9 +160,9 @@ void process_update_request(struct kv_request* req, struct thread_data* thread_d
 }
 
 void process_delete_request(struct kv_request* req, struct thread_data* thread_data) {
-  void* val = index_lookup(thread_data->index, &req->key);
+  void* val = index_lookup(thread_data->index, req->key);
   if (!val) {
-    struct kv_event* event = malloc(sizeof(*event));
+    struct kv_event* event = kv_event_new();
     event->sequence = req->sequence;
     event->return_code = -1;
     enqueue(thread_data->kv_event_queue, event);
@@ -191,8 +196,8 @@ int worker_deque_request(struct thread_data* thread_data) {
     struct kv_request* req = dequeue(kv_que);
     Assert(req);
     switch (req->type) {
-      case ADD:
-        process_add_request(req, thread_data);
+      case PUT:
+        process_put_request(req, thread_data);
         break;
       case GET:
         process_get_request(req, thread_data);
@@ -271,19 +276,9 @@ void* worker_thread_main(void* arg) {
   } // while
 }
 
-int struct_key_comparator(void* a, void* b) {
-  struct key* key1 = a;
-  struct key* key2 = b;
-  if (key1->val == key2->val) {
-    return strcmp(key1->data, key2->data);
-  } else {
-    return (key1->val - key2->val);
-  }
-}
-
 void thread_data_init(struct thread_data* data, int thread_idx, struct option* option) {
   data->kv_request_queue = queue_new(64);
-  data->index = index_new(struct_key_comparator);
+  data->index = index_new(key_comparator);
   data->kv_event_queue = queue_new(64);
   data->io_context_queue = queue_new(64);
   data->arena = arena_new();
@@ -329,11 +324,24 @@ void io_worker_destroy() {
 }
 
 int kv_submit(struct kv_request* request) {
-  int thread_idx = request->key.dir_fd % thread_nr;
+  int thread_idx = get_thread_index(request->key, thread_nr);
+
   // should make a copy of user request, because user may
   // use this request for further submit
   struct kv_request* dup_req = malloc(sizeof(*dup_req));
   memcpy(dup_req, request, sizeof(*request));
+  if (request->key) {
+    dup_req->key = malloc(key_size());
+    memcpy(dup_req->key, request->key, key_size());
+  }
+  if (request->value) {
+    dup_req->value = malloc(value_size());
+    memcpy(dup_req->value, request->value, value_size());
+  }
+  if (request->max_key) {
+    dup_req->max_key = malloc(key_size());
+    memcpy(dup_req->max_key, request->max_key, key_size());
+  }
 
   // TODO: lock
   int sequence = (threads_data[thread_idx].max_sequence++) | (thread_idx << 24);

@@ -1,7 +1,7 @@
 #ifndef KTABLEFS_KVENGINE_SLAB_H_
 #define KTABLEFS_KVENGINE_SLAB_H_
 
-#include <sys/types.h>
+#include <stddef.h>
 
 struct io_context;
 struct arena;

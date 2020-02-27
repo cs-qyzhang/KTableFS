@@ -10,6 +10,8 @@ set(ARENA_NB_BLOCKS 256)
 set(ARENA_BLOCK_SIZE PAGE_SIZE)
 set(AIO_MAX_EVENTS 64)
 set(BTREE_ORDER 16)
+set(FILE_AGGREGATION_SIZE "(1024 * 1024)")
+set(AGGREGATION_FILE_SIZE "(1024 * 1024 * 1024)")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS "-Wall")
@@ -58,8 +60,8 @@ target_sources(kvengine_test
     "${PROJECT_SOURCE_DIR}/src/kvengine/io_worker.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/item.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
+    "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
     "${PROJECT_SOURCE_DIR}/util/hash.c"
     "${PROJECT_SOURCE_DIR}/util/freelist.c"
     "${PROJECT_SOURCE_DIR}/util/queue.c"

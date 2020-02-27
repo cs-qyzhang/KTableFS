@@ -1,7 +1,7 @@
 #ifndef KTABLEFS_KVENGINE_IO_CONTEXT_H_
 #define KTABLEFS_KVENGINE_IO_CONTEXT_H_
 
-#include <sys/types.h>
+#include <stddef.h>
 #include <linux/aio_abi.h>
 #include <assert.h>
 

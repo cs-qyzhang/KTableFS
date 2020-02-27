@@ -1,39 +1,21 @@
 #ifndef KTABLEFS_KVENGINE_H_
 #define KTABLEFS_KVENGINE_H_
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <stdint.h>
+#include <stddef.h>
 
-struct key {
-  union {
-    struct {
-      uint64_t hash   : 32;
-      uint64_t length : 8;
-      uint64_t dir_fd : 24;
-    };
-    int64_t val;
-  };
-  char* data;
-};
-
-struct value {
-  union {
-    struct stat stat;
-  };
-};
+struct key;
+struct value;
 
 struct kv_request {
   union {
-    struct key key;
-    struct key min_key;
+    struct key* key;
+    struct key* min_key;
   };
-  struct key max_key;
-  struct value value;
+  struct key* max_key;
+  struct value* value;
   size_t sequence;
   enum req_type {
-    ADD,
+    PUT,
     GET,
     UPDATE,
     DELETE,
@@ -42,7 +24,7 @@ struct kv_request {
 };
 
 struct kv_event {
-  struct value value;
+  struct value* value;
   size_t sequence;
   int return_code;
 };
@@ -54,5 +36,13 @@ struct option {
 
 struct kv_event* kv_getevent(int sequence);
 int kv_submit(struct kv_request* request);
+
+// implemention dependent
+size_t kv_to_item(struct key* key, struct value* value, void** item);
+void item_to_kv(void* item, struct key* key, struct value* value);
+int get_thread_index(struct key* key, int thread_nr);
+int key_comparator(void* a, void* b);
+size_t key_size();
+size_t value_size();
 
 #endif // KTABLEFS_KVENGINE_H_

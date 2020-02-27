@@ -1,11 +1,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <assert.h>
 #include "util/index.h"
 #include "kvengine/kvengine.h"
 #include "kvengine/pagecache.h"
-#include "kvengine/item.h"
 #include "kvengine/io_context.h"
 #include "kvengine/io_worker.h"
 #include "ktablefs_config.h"
@@ -106,7 +106,8 @@ void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, struc
   lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
   if (lru) {
     void* item = &lru->page[page_offset];
-    item_to_kv(item, NULL, &ctx->kv_event->value);
+    ctx->kv_event->value = malloc(value_size());
+    item_to_kv(item, NULL, ctx->kv_event->value);
     ctx->kv_event->return_code = 0;
     kv_event_enqueue(ctx->kv_event, ctx->thread_data);
     lru_update_(pgcache, lru);
