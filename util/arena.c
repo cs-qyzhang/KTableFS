@@ -9,13 +9,7 @@
 #include <stdint.h>
 #include "util/arena.h"
 #include "ktablefs_config.h"
-
-#ifdef DEBUG
-#include <assert.h>
-#define Assert(expr)  assert(expr)
-#else // DEBUG
-#define Assert(expr)
-#endif
+#include "debug.h"
 
 struct arena {
   // current block index

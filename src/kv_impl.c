@@ -8,25 +8,47 @@ size_t kv_to_item(struct key* key, struct value* value, void** item) {
   head.val = key->val;
   head.valid = -1;
   size_t item_size;
-  item_size = sizeof(head) + key->length + sizeof(*value);
+  item_size = sizeof(head) + key->length + sizeof(*(value->handle.file));
   *item = malloc(item_size);
   memcpy(*item, &head, sizeof(head));
   memcpy(*item + sizeof(head), key->data, key->length);
-  memcpy(*item + sizeof(head) + key->length, &(value->file.file), sizeof(value->file.file));
+  memcpy(*item + sizeof(head) + key->length, value->handle.file, sizeof(*(value->handle.file)));
   return item_size;
 }
 
-void item_to_kv(void* item, struct key* key, struct value* value) {
+void item_to_kv(void* item, struct key** key, struct value** value) {
   if (key) {
-    key->val = ((struct item_head*)item)->val;
-    key->data = malloc(key->length);
-    memcpy(key->data, (char*)item + sizeof(struct item_head), key->length);
+    *key = malloc(sizeof(**key));
+    (*key)->val = ((struct item_head*)item)->val;
+    (*key)->data = malloc((*key)->length + 1);
+    memcpy((*key)->data, (char*)item + sizeof(struct item_head), (*key)->length);
+    (*key)->data[(*key)->length] = '\0';
   }
   if (value) {
-    memcpy(value, (char*)item + sizeof(struct item_head) + ((struct item_head*)item)->length, sizeof(value->file.file));
-    value->file.aggregation_file_fd = 0;
-    value->file.big_file_fd = 0;
+    *value = malloc(sizeof(**value));
+    (*value)->handle.file = (struct kfs_file*)((char*)item +
+        (sizeof(struct item_head) + ((struct item_head*)item)->length));
+    (*value)->handle.offset = 0;
+    (*value)->handle.big_file_fd = 0;
   }
+}
+
+struct key* keydup(struct key* key) {
+  struct key* new = malloc(sizeof(*new));
+  new->data = malloc(key->length + 1);
+  memcpy(new->data, key->data, key->length);
+  new->data[key->length] = '\0';
+  new->val = key->val;
+  return new;
+}
+
+struct value* valuedup(struct value* value) {
+  struct value* new = malloc(sizeof(*new));
+  new->handle.file = malloc(sizeof(*(new->handle.file)));
+  memcpy(new->handle.file, value->handle.file, sizeof(*(new->handle.file)));
+  new->handle.offset = value->handle.offset;
+  new->handle.big_file_fd = value->handle.big_file_fd;
+  return new;
 }
 
 int get_thread_index(struct key* key, int thread_nr) {
@@ -37,16 +59,8 @@ int key_comparator(void* a, void* b) {
   struct key* key1 = a;
   struct key* key2 = b;
   if (key1->val == key2->val) {
-    return strcmp(key1->data, key2->data);
+    return memcmp(key1->data, key2->data, key1->length);
   } else {
     return (key1->val - key2->val);
   }
-}
-
-size_t key_size() {
-  return sizeof(struct key);
-}
-
-size_t value_size() {
-  return sizeof(struct value);
 }

@@ -2,12 +2,7 @@
 #include <assert.h>
 #include "util/btree.h"
 #include "util/arena.h"
-
-#ifdef DEBUG
-#define Assert(expr)  assert(expr)
-#else // DEBUG
-#define Assert(expr)
-#endif
+#include "debug.h"
 
 struct btree_node {
   struct btree_node* parent;

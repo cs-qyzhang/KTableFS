@@ -1,9 +1,7 @@
 #ifndef KTABLEFS_KV_IMPL_H_
 #define KTABLEFS_KV_IMPL_H_
 
-#include <sys/stat.h>
 #include <stdint.h>
-#include <stddef.h>
 #include "file.h"
 
 struct key {
@@ -19,7 +17,7 @@ struct key {
 };
 
 struct value {
-  struct kfs_file_handle file;
+  struct kfs_file_handle handle;
 };
 
 struct item_head {

@@ -1,13 +1,7 @@
 #include <stdlib.h>
 #include "util/freelist.h"
 #include "util/arena.h"
-
-#ifdef DEBUG
-#include <assert.h>
-#define Assert(expr)  assert(expr)
-#else // DEBUG
-#define Assert(expr)
-#endif
+#include "debug.h"
 
 struct list_node {
   int index;

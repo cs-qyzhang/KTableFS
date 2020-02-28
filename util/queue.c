@@ -2,8 +2,6 @@
 #include <assert.h>
 #include "util/queue.h"
 
-// TODO: make them static inline?
-
 // TODO
 #define die(x)  _exit(-1)
 

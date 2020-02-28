@@ -13,9 +13,11 @@ struct kfs_file {
 };
 
 struct kfs_file_handle {
-  struct kfs_file file;
-  int aggregation_file_fd;
+  struct kfs_file* file;
+  off_t offset;
   int big_file_fd;
 };
+
+ino_t file_ino(struct kfs_file_handle* file);
 
 #endif // KTABLEFS_FILE_H_

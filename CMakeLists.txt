@@ -13,6 +13,7 @@ set(BTREE_ORDER 16)
 set(FILE_AGGREGATION_SIZE "(1024 * 1024)")
 set(AGGREGATION_FILE_SIZE "(1024 * 1024 * 1024)")
 
+set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS "-Wall")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG -g")
@@ -73,3 +74,7 @@ add_test(kvengine_test kvengine_test)
 
 add_executable(aio_test "${PROJECT_SOURCE_DIR}/test/kvengine/aio_test.c")
 add_test(aio_test aio_test)
+
+add_executable(fuse_test "${PROJECT_SOURCE_DIR}/test/fuse_test.c")
+target_link_libraries(fuse_test fuse3)
+#add_test(fuse_test fuse_test)

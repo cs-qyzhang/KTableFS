@@ -9,24 +9,25 @@
 #include "file.h"
 #include "kvengine/kvengine.h"
 
-void io_worker_init(struct option* option);
 void io_worker_destroy();
 
 int main(void) {
   printf("%ld %ld %ld\n", sizeof(struct item_head), sizeof(struct stat), sizeof(struct value));
-  struct option* option = malloc(sizeof(*option));
+  struct kv_options* option = malloc(sizeof(*option));
   option->slab_dir = malloc(255);
   option->thread_nr = 1;
   system("mkdir -p /tmp/kv");
   sprintf(option->slab_dir, "%s", "/tmp/kv");
 
-  io_worker_init(option);
+  kv_init(option);
 
   struct kv_request* request = malloc(sizeof(*request));
   request->key = malloc(sizeof(*request->key));
   request->value = malloc(sizeof(*request->value));
-  memset(request->value, 0, sizeof(*request->value));
-  request->value->file.file.stat.st_uid = 14;
+  memset(request->value, 0, sizeof(struct value));
+  request->value->handle.file = malloc(sizeof(struct kfs_file));
+  memset(request->value->handle.file, 0, sizeof(struct kfs_file));
+  request->value->handle.file->stat.st_uid = 14;
   request->key->data = malloc(2);
   request->key->data[0] = 'a';
   request->key->data[1] = '\0';
@@ -36,7 +37,7 @@ int main(void) {
 
   for (int i = 0; i < 100000; ++i) {
     request->type = PUT;
-    request->value->file.file.stat.st_uid = i + 10;
+    request->value->handle.file->stat.st_uid = i + 10;
     request->key->val = i;
     sequence = kv_submit(request);
     // printf("add submit sequence: %d\n", sequence);
@@ -48,7 +49,7 @@ int main(void) {
 
   for (int i = 0; i < 100000; i += 2) {
     request->type = UPDATE;
-    request->value->file.file.stat.st_uid = i + 20;
+    request->value->handle.file->stat.st_uid = i + 20;
     request->key->val = i;
     sequence = kv_submit(request);
     // printf("add submit sequence: %d\n", sequence);
@@ -81,10 +82,10 @@ int main(void) {
     assert(event->sequence == sequence);
     if (i % 2) {
       if (i > 1000) {
-        assert(event->value->file.file.stat.st_uid == i + 10);
+        assert(event->value->handle.file->stat.st_uid == i + 10);
       }
     } else {
-      assert(event->value->file.file.stat.st_uid == i + 20);
+      assert(event->value->handle.file->stat.st_uid == i + 20);
     }
   }
 

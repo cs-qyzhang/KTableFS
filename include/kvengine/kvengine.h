@@ -29,20 +29,21 @@ struct kv_event {
   int return_code;
 };
 
-struct option {
+struct kv_options {
   char* slab_dir;
   int thread_nr;
 };
 
+void kv_init(struct kv_options* options);
 struct kv_event* kv_getevent(int sequence);
 int kv_submit(struct kv_request* request);
+struct key* keydup(struct key* key);
+struct value* valuedup(struct value* value);
 
 // implemention dependent
 size_t kv_to_item(struct key* key, struct value* value, void** item);
-void item_to_kv(void* item, struct key* key, struct value* value);
+void item_to_kv(void* item, struct key** key, struct value** value);
 int get_thread_index(struct key* key, int thread_nr);
 int key_comparator(void* a, void* b);
-size_t key_size();
-size_t value_size();
 
 #endif // KTABLEFS_KVENGINE_H_

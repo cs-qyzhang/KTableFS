@@ -17,13 +17,7 @@
 #include "kvengine/slab.h"
 #include "kvengine/io_worker.h"
 #include "ktablefs_config.h"
-
-#ifdef DEBUG
-#include <assert.h>
-#define Assert(expr)  assert(expr)
-#else // DEBUG
-#define Assert(expr)
-#endif
+#include "debug.h"
 
 struct thread_data* threads_data;
 pthread_t* threads;
@@ -67,10 +61,9 @@ void kv_put_finish(struct io_context* ctx) {
 void kv_get_finish(struct io_context* ctx) {
   ctx->lru->valid = 1;
   void* item = &ctx->lru->page[ctx->page_offset];
-  ctx->kv_event->value = malloc(value_size());
   // item's first byte is valid flag, -1 means valid, 0 means deleted.
   Assert(((int8_t*)item)[0] == -1);
-  item_to_kv(item, NULL, ctx->kv_event->value);
+  item_to_kv(item, NULL, &ctx->kv_event->value);
   ctx->kv_event->return_code = 0;
   kv_event_enqueue(ctx->kv_event, ctx->thread_data);
 }
@@ -276,7 +269,7 @@ void* worker_thread_main(void* arg) {
   } // while
 }
 
-void thread_data_init(struct thread_data* data, int thread_idx, struct option* option) {
+void thread_data_init(struct thread_data* data, int thread_idx, struct kv_options* option) {
   data->kv_request_queue = queue_new(64);
   data->index = index_new(key_comparator);
   data->kv_event_queue = queue_new(64);
@@ -300,7 +293,7 @@ void thread_data_init(struct thread_data* data, int thread_idx, struct option* o
   }
 }
 
-void io_worker_init(struct option* option) {
+void io_worker_init(struct kv_options* option) {
   thread_nr = option->thread_nr;
   threads = malloc(sizeof(pthread_t) * thread_nr);
   threads_data = malloc(sizeof(struct thread_data) * thread_nr);
@@ -323,6 +316,10 @@ void io_worker_destroy() {
   }
 }
 
+void kv_init(struct kv_options* options) {
+  io_worker_init(options);
+}
+
 int kv_submit(struct kv_request* request) {
   int thread_idx = get_thread_index(request->key, thread_nr);
 
@@ -330,18 +327,12 @@ int kv_submit(struct kv_request* request) {
   // use this request for further submit
   struct kv_request* dup_req = malloc(sizeof(*dup_req));
   memcpy(dup_req, request, sizeof(*request));
-  if (request->key) {
-    dup_req->key = malloc(key_size());
-    memcpy(dup_req->key, request->key, key_size());
-  }
-  if (request->value) {
-    dup_req->value = malloc(value_size());
-    memcpy(dup_req->value, request->value, value_size());
-  }
-  if (request->max_key) {
-    dup_req->max_key = malloc(key_size());
-    memcpy(dup_req->max_key, request->max_key, key_size());
-  }
+  if (request->key)
+    dup_req->key = keydup(request->key);
+  if (request->value)
+    dup_req->value = valuedup(request->value);
+  if (request->max_key)
+    dup_req->max_key = keydup(request->max_key);
 
   // TODO: lock
   int sequence = (threads_data[thread_idx].max_sequence++) | (thread_idx << 24);
