@@ -10,6 +10,7 @@ set(ARENA_NB_BLOCKS 256)
 set(ARENA_BLOCK_SIZE PAGE_SIZE)
 set(AIO_MAX_EVENTS 64)
 set(BTREE_ORDER 16)
+set(KVENGINE_THREAD_NR 1)
 set(FILE_AGGREGATION_SIZE "(1024 * 1024)")
 set(AGGREGATION_FILE_SIZE "(1024 * 1024 * 1024)")
 
@@ -78,3 +79,25 @@ add_test(aio_test aio_test)
 add_executable(fuse_test "${PROJECT_SOURCE_DIR}/test/fuse_test.c")
 target_link_libraries(fuse_test fuse3)
 #add_test(fuse_test fuse_test)
+
+add_executable(ktablefs)
+target_sources(ktablefs
+  PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/dcache.c"
+    "${PROJECT_SOURCE_DIR}/src/io.c"
+    "${PROJECT_SOURCE_DIR}/src/ktablefs.c"
+    "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/io_worker.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
+    "${PROJECT_SOURCE_DIR}/util/hash.c"
+    "${PROJECT_SOURCE_DIR}/util/freelist.c"
+    "${PROJECT_SOURCE_DIR}/util/queue.c"
+    "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
+    "${PROJECT_SOURCE_DIR}/util/arena.c"
+)
+target_link_libraries(ktablefs pthread fuse3)
+
+add_executable(kfs_test "${PROJECT_SOURCE_DIR}/test/kfs_test.c")
+add_test(kfs_test kfs_test)

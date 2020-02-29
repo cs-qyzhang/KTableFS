@@ -286,7 +286,7 @@ void thread_data_init(struct thread_data* data, int thread_idx, struct kv_option
   data->slab->freelist = freelist_new(data->arena);
   char slab_file_name[512];
   sprintf(slab_file_name, "%s/slab-%d", option->slab_dir, thread_idx);
-  data->slab->fd = open(slab_file_name, O_CREAT | O_RDWR, 0777);
+  data->slab->fd = open(slab_file_name, O_CREAT | O_RDWR, 0644);
   if (data->slab->fd == -1) {
     perror(strerror(data->slab->fd));
     assert(0);
@@ -323,6 +323,7 @@ void kv_init(struct kv_options* options) {
 int kv_submit(struct kv_request* request) {
   int thread_idx = get_thread_index(request->key, thread_nr);
 
+  // TODO: free()
   // should make a copy of user request, because user may
   // use this request for further submit
   struct kv_request* dup_req = malloc(sizeof(*dup_req));
