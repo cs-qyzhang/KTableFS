@@ -153,31 +153,12 @@ struct kv_event* get_file(const char* path) {
 int kfs_open(const char* path, struct fuse_file_info* fi) {
   print_info("open", path);
 
-  size_t len = strlen(path);
-  char* end = (char*)path + (len - 1);
-  while (*end != '/')
-    end--;
+  struct kv_event* event = get_file(path);
 
-  ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
-
-  struct kv_request* req = malloc(sizeof(*req));
-  memset(req, 0, sizeof(*req));
-  req->key = malloc(sizeof(*req->key));
-  req->key->dir_ino = dir_ino;
-  req->key->length = len - (end - path) - 1;
-  req->key->data = malloc(req->key->length + 1);
-  memcpy(req->key->data, end + 1, req->key->length);
-  req->key->data[req->key->length] = '\0';
-  req->key->hash = file_name_hash(end + 1, req->key->length);
-  req->type = GET;
-
-  int sequence = kv_submit(req);
-  struct kv_event* event = kv_getevent(sequence);
-
-  if (event->return_code != 0) {
+  if (event->return_code != 0)
     return -ENOENT;
-  }
-  fi->fh = (uint64_t)event->value;
+
+  fi->fh = (uint64_t)&event->value->handle;
   return 0;
 }
 

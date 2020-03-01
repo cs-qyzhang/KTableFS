@@ -311,32 +311,36 @@ static void btree_node_merge(struct btree_node* node) {
   }
 }
 
-/*
- * create btree
- *
- * number of data in btree node is between [order, 2 * order]
- */
-struct btree* btree_new(int order, key_cmp_t key_cmp) {
-  // if order less than 2, btree_node_merge_ maybe fail
-  assert(order > 2);
-  struct btree* tree = malloc(sizeof(*tree));
-  tree->order = order;
-  tree->size = 0;
-  tree->key_cmp = key_cmp;
-  tree->arena = arena_new();
-  tree->root = arena_allocate(tree->arena, sizeof(*tree->root));
-  tree->root->size = 0;
-  tree->root->child = NULL;
-  tree->root->head = NULL;
-  tree->root->next = NULL;
-  tree->root->parent = NULL;
-  tree->root->tree = tree;
-  return tree;
-}
+int btree_node_scan(struct btree_node* node, void* min_key, void* max_key, scan_t scan, void* scan_arg) {
+  int scan_nr = 0;
+  struct pair* pos = node->head;
+  struct btree_node* child = node->child;
 
-void btree_destroy(struct btree* tree) {
-  arena_destroy(tree->arena);
-  free(tree);
+  while (pos != NULL) {
+    if (key_greater(pos->key, max_key)) {
+      if (child)
+        scan_nr += btree_node_scan(child, min_key, max_key, scan, scan_arg);
+      break;
+    }
+    if (key_less(pos->key, min_key)) {
+      pos = pos->next;
+      if (child)
+        child = child->next;
+      continue;
+    }
+    scan_nr += 1;
+    scan(pos->key, pos->value, scan_arg);
+    if (child)
+      scan_nr += btree_node_scan(child, min_key, max_key, scan, scan_arg);
+    pos = pos->next;
+    if (child)
+      child = child->next;
+  }
+
+  if (pos == NULL && child)
+    scan_nr += btree_node_scan(child, min_key, max_key, scan, scan_arg);
+
+  return scan_nr;
 }
 
 /*
@@ -393,6 +397,34 @@ void* btree_lookup(struct btree* tree, void* key) {
   }
 }
 
+/*
+ * create btree
+ *
+ * number of data in btree node is between [order, 2 * order]
+ */
+struct btree* btree_new(int order, key_cmp_t key_cmp) {
+  // if order less than 2, btree_node_merge_ maybe fail
+  assert(order > 2);
+  struct btree* tree = malloc(sizeof(*tree));
+  tree->order = order;
+  tree->size = 0;
+  tree->key_cmp = key_cmp;
+  tree->arena = arena_new();
+  tree->root = arena_allocate(tree->arena, sizeof(*tree->root));
+  tree->root->size = 0;
+  tree->root->child = NULL;
+  tree->root->head = NULL;
+  tree->root->next = NULL;
+  tree->root->parent = NULL;
+  tree->root->tree = tree;
+  return tree;
+}
+
+void btree_destroy(struct btree* tree) {
+  arena_destroy(tree->arena);
+  free(tree);
+}
+
 int btree_insert(struct btree* tree, void* key, void* value) {
   struct btree_node* leaf;
   void* val;
@@ -404,6 +436,7 @@ int btree_insert(struct btree* tree, void* key, void* value) {
     new_pair->key = key;
     new_pair->value = value;
     btree_node_insert(leaf, new_pair);
+    tree->size += 1;
     return 0;
   }
 }
@@ -429,9 +462,14 @@ int btree_remove(struct btree* tree, void* key) {
       pos->value = child->head->value;
       btree_node_remove(child, child->head->key);
     }
+    tree->size -= 1;
     return 0;
   } else {
     // key isn't in tree
     return -1;
   }
+}
+
+int btree_scan(struct btree* tree, void* min_key, void* max_key, scan_t scan, void* scan_arg) {
+  return btree_node_scan(tree->root, min_key, max_key, scan, scan_arg);
 }

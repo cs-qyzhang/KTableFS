@@ -211,7 +211,12 @@ struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mod
   int sequence = kv_submit(req);
   struct kv_event* event = kv_getevent(sequence);
   Assert(event->return_code == 0);
-  event->value = (struct value*)handle;
+
+  req->value = NULL;
+  req->type = GET;
+  sequence = kv_submit(req);
+  event = kv_getevent(sequence);
+  Assert(event->return_code == 0);
 
   return event;
 }

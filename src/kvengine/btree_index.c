@@ -22,3 +22,7 @@ void* index_lookup(struct index* index, void* key) {
 int index_remove(struct index* index, void* key) {
   return btree_remove((struct btree*)index, key);
 }
+
+int index_scan(struct index* index, void* min_key, void* max_key, scan_t scan, void* scan_arg) {
+  return btree_scan((struct btree*)index, min_key, max_key, scan, scan_arg);
+}

@@ -104,7 +104,6 @@ void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, struc
     ctx->kv_event->return_code = 0;
     kv_event_enqueue(ctx->kv_event, ctx->thread_data);
     lru_update_(pgcache, lru);
-    return;
   } else {
     lru = pagecache_find_free_page_(pgcache);
     lru->hash = hash;
