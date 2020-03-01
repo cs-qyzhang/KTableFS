@@ -2,6 +2,7 @@
 #define KTABLEFS_KVENGINE_H_
 
 #include <stddef.h>
+#include "util/index.h"
 
 struct key;
 struct value;
@@ -13,6 +14,8 @@ struct kv_request {
   };
   struct key* max_key;
   struct value* value;
+  scan_t scan;
+  void* scan_arg;
   size_t sequence;
   enum req_type {
     PUT,
@@ -35,6 +38,7 @@ struct kv_options {
 };
 
 void kv_init(struct kv_options* options);
+void kv_destroy();
 struct kv_event* kv_getevent(int sequence);
 int kv_submit(struct kv_request* request);
 struct key* keydup(struct key* key);

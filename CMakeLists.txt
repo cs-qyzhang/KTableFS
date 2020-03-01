@@ -59,7 +59,7 @@ add_executable(kvengine_test)
 target_sources(kvengine_test
   PRIVATE
     "${PROJECT_SOURCE_DIR}/test/kvengine/kvengine_test.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/io_worker.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
@@ -87,7 +87,7 @@ target_sources(ktablefs
     "${PROJECT_SOURCE_DIR}/src/io.c"
     "${PROJECT_SOURCE_DIR}/src/ktablefs.c"
     "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/io_worker.c"
+    "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"

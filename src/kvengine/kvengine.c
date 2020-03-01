@@ -176,6 +176,30 @@ void process_delete_request(struct kv_request* req, struct thread_data* thread_d
   slab_write_item(thread_data->slab, slab_idx, item, 1, ctx);
 }
 
+void scan_request_function(void* key, void* value, void* scan_arg) {
+  struct kv_request* req = ((void**)scan_arg)[0];
+  struct thread_data* thread_data = ((void**)scan_arg)[1];
+  int slab_idx = (int)(uintptr_t)value - 1;
+
+  void* item = slab_read_item_sync(thread_data->slab, slab_idx);
+  Assert(((int8_t*)item)[0] == -1);
+  struct value* val;
+  item_to_kv(item, NULL, &val);
+  req->scan(key, val, req->scan_arg);
+}
+
+void process_scan_request(struct kv_request* req, struct thread_data* thread_data) {
+  void** scan_arg = malloc(sizeof(void*) * 2);
+  scan_arg[0] = req;
+  scan_arg[1] = thread_data;
+  int scan_nr = index_scan(thread_data->index, req->min_key, req->max_key,
+                           scan_request_function, scan_arg);
+  struct kv_event* event = kv_event_new();
+  event->sequence = req->sequence;
+  event->return_code = scan_nr;
+  enqueue(thread_data->kv_event_queue, event);
+}
+
 int worker_deque_request(struct thread_data* thread_data) {
   struct queue* kv_que = thread_data->kv_request_queue;
 
@@ -202,6 +226,7 @@ int worker_deque_request(struct thread_data* thread_data) {
         process_delete_request(req, thread_data);
         break;
       case SCAN:
+        process_scan_request(req, thread_data);
         break;
       default:
         Assert(0);
@@ -318,6 +343,10 @@ void io_worker_destroy() {
 
 void kv_init(struct kv_options* options) {
   io_worker_init(options);
+}
+
+void kv_destroy() {
+  io_worker_destroy();
 }
 
 int kv_submit(struct kv_request* request) {

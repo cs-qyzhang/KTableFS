@@ -18,7 +18,7 @@
 #include "ktablefs_config.h"
 #include "debug.h"
 
-extern struct stat root_stat;
+extern struct stat* root_stat;
 size_t datadir_path_len;
 
 pthread_mutex_t aggregation_file_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -180,11 +180,11 @@ struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mod
 
   handle->file->big_file_no = 0;
 
-  handle->file->stat.st_uid = root_stat.st_uid;
-  handle->file->stat.st_gid = root_stat.st_gid;
-  handle->file->stat.st_dev = root_stat.st_dev;
-  handle->file->stat.st_rdev = root_stat.st_rdev;
-  handle->file->stat.st_blksize = root_stat.st_blksize;
+  handle->file->stat.st_uid = root_stat->st_uid;
+  handle->file->stat.st_gid = root_stat->st_gid;
+  handle->file->stat.st_dev = root_stat->st_dev;
+  handle->file->stat.st_rdev = root_stat->st_rdev;
+  handle->file->stat.st_blksize = root_stat->st_blksize;
   handle->file->stat.st_nlink = 1;
   handle->file->stat.st_mode = mode;
   update_atime(handle);

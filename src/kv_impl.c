@@ -61,6 +61,6 @@ int key_comparator(void* a, void* b) {
   if (key1->val == key2->val) {
     return memcmp(key1->data, key2->data, key1->length);
   } else {
-    return (key1->val - key2->val);
+    return (key1->val < key2->val) ? -1 : 1;
   }
 }

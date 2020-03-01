@@ -16,6 +16,12 @@ static inline int slab_get_page_offset(struct slab* slab, int index) {
   return (slab->slab_size * index) % PAGE_SIZE;
 }
 
+void* slab_read_item_sync(struct slab* slab, int index) {
+  int page_idx = slab_get_page(slab, index);
+  int page_offset = slab_get_page_offset(slab, index);
+  return page_read_sync(slab->pgcache, page_hash(slab->fd, page_idx), page_offset);
+}
+
 void slab_read_item(struct slab* slab, int index, struct io_context* ctx) {
   int page_idx = slab_get_page(slab, index);
   int page_offset = slab_get_page_offset(slab, index);

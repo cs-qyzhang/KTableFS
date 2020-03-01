@@ -11,7 +11,7 @@ struct key {
       uint64_t length  : 8;
       uint64_t dir_ino : 24;
     };
-    int64_t val;
+    uint64_t val;
   };
   char* data;
 };
@@ -29,7 +29,7 @@ struct item_head {
       uint64_t length  : 8;
       uint64_t dir_ino : 24;  // MSB
     };
-    int64_t val;
+    uint64_t val;
   };
 };
 

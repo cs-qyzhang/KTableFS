@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -94,6 +96,23 @@ void pagecache_insert_index(struct io_context* ctx) {
 
 void kv_event_enqueue(struct kv_event* event, struct thread_data* thread_data);
 void io_context_enqueue(struct io_context* ctx);
+
+void* page_read_sync(struct pagecache* pgcache, hash_t hash, size_t page_offset) {
+  struct lru_entry* lru;
+  lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
+  if (!lru) {
+    lru = pagecache_find_free_page_(pgcache);
+    lru->hash = hash;
+
+    int fd;
+    int page_index;
+    get_page_from_hash(hash, &fd, &page_index);
+
+    pread(fd, lru->page, PAGE_SIZE, PAGE_SIZE * page_index);
+  }
+  lru_update_(pgcache, lru);
+  return &lru->page[page_offset];
+}
 
 void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, struct io_context* ctx) {
   struct lru_entry* lru;

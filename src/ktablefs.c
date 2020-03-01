@@ -37,7 +37,8 @@ static void print_info(const char* func, const char* path) {
 
 struct options options;
 struct dentrycache* dcache;
-struct stat root_stat;
+struct stat* root_stat;
+struct kfs_file_handle root_handle;
 
 #define OPTION(t, p)  { t, offsetof(struct options, p), 1 }
 static const struct fuse_opt option_spec[] = {
@@ -46,6 +47,10 @@ static const struct fuse_opt option_spec[] = {
   OPTION("--help", show_help),
   FUSE_OPT_END
 };
+
+static inline int path_is_root(const char* path) {
+  return (path[0] == '/' && path[1] == '\0');
+}
 
 void* kfs_init(struct fuse_conn_info* conn, struct fuse_config* cfg) {
 #ifdef DEBUG
@@ -66,21 +71,24 @@ void* kfs_init(struct fuse_conn_info* conn, struct fuse_config* cfg) {
   io_init();
   dcache = dcache_new();
 
-  memset(&root_stat, 0, sizeof(root_stat));
+  root_handle.file = malloc(sizeof(*(root_handle.file)));
+  root_stat = &root_handle.file->stat;
+
+  memset(root_stat, 0, sizeof(*root_stat));
   struct stat statbuf;
   stat(options.datadir, &statbuf);
-  root_stat.st_blksize = statbuf.st_blksize;
-  root_stat.st_blocks = statbuf.st_blocks;
-  root_stat.st_dev = statbuf.st_dev;
-  root_stat.st_rdev = statbuf.st_rdev;
-  root_stat.st_uid = getuid();
-  root_stat.st_gid = getgid();
-  root_stat.st_mode = S_IFDIR | 0755;
+  root_stat->st_blksize = statbuf.st_blksize;
+  root_stat->st_blocks = statbuf.st_blocks;
+  root_stat->st_dev = statbuf.st_dev;
+  root_stat->st_rdev = statbuf.st_rdev;
+  root_stat->st_uid = getuid();
+  root_stat->st_gid = getgid();
+  root_stat->st_mode = S_IFDIR | 0755;
   // Why "two" hardlinks instead of "one"? The answer is here: http://unix.stackexchange.com/a/101536
-  root_stat.st_nlink = 2;
-  root_stat.st_atime = time(NULL);
-  root_stat.st_ctime = time(NULL);
-  root_stat.st_mtime = time(NULL);
+  root_stat->st_nlink = 2;
+  root_stat->st_atime = time(NULL);
+  root_stat->st_ctime = time(NULL);
+  root_stat->st_mtime = time(NULL);
 
   return NULL;
 }
@@ -116,7 +124,7 @@ int kfs_create(const char* path, mode_t mode, struct fuse_file_info* fi) {
   ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
   struct kv_event* event = create_file(dir_ino, end + 1, mode, len - (end - path + 1));
   if (event->return_code == 0) {
-    fi->fh = (uint64_t)event->value;
+    fi->fh = (uint64_t)&event->value->handle;
   }
   return event->return_code;
 }
@@ -197,9 +205,9 @@ int kfs_getattr(const char* path, struct stat* st, struct fuse_file_info *fi) {
   //              as no process still holds it open. Symbolic links are not counted in the total.
   //    st_size:  This specifies the size of a regular file in bytes. For files that are really devices this field isn’t usually meaningful. For symbolic links this specifies the length of the file name the link refers to.
 
-  if (path[0] == '/' && path[1] == '\0') {
-    root_stat.st_atime = time(NULL);
-    *st = root_stat;
+  if (path_is_root(path)) {
+    root_stat->st_atime = time(NULL);
+    *st = *root_stat;
   } else {
     struct kv_event* event = get_file(path);
     if (event->return_code != 0) {
@@ -216,12 +224,60 @@ int kfs_getattr(const char* path, struct stat* st, struct fuse_file_info *fi) {
 int kfs_opendir(const char* path, struct fuse_file_info* fi) {
   print_info("opendir", path);
 
+  if (path_is_root(path)) {
+    fi->fh = (uint64_t)&root_handle;
+    return 0;
+  }
+
+  struct kv_event* event = get_file(path);
+  if (event->return_code != 0)
+    return -ENOENT;
+
+  fi->fh = (uint64_t)&event->value->handle;
   return 0;
+}
+
+void readdir_scan(void* key, void* value, void* scan_arg) {
+  fuse_fill_dir_t filler = ((void**)scan_arg)[0];
+  void* buf = ((void**)scan_arg)[1];
+  off_t* offset = ((void**)scan_arg)[2];
+  struct kfs_file_handle* handle = &(((struct value*)value)->handle);
+
+  *offset += 1;
+  filler(buf, ((struct key*)key)->data, &handle->file->stat, 0, 0);
 }
 
 int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset,
     struct fuse_file_info* fi, enum fuse_readdir_flags flags) {
   print_info("readdir", path);
+
+  struct kfs_file_handle* handle = (struct kfs_file_handle*)fi->fh;
+  filler(buf, ".", &handle->file->stat, 0, 0);
+  filler(buf, "..", &handle->file->stat, 0, 0);
+
+  ino_t dir_ino = file_ino(handle);
+  struct kv_request* req = malloc(sizeof(*req));
+  memset(req, 0, sizeof(*req));
+  req->min_key = malloc(sizeof(*req->min_key));
+  req->min_key->dir_ino = dir_ino;
+  req->min_key->hash = 0;
+  req->min_key->length = 0;
+  req->max_key = malloc(sizeof(*req->max_key));
+  req->max_key->dir_ino = dir_ino + 1;
+  req->max_key->hash = 0;
+  req->max_key->length = 0;
+  req->scan = readdir_scan;
+  void** scan_arg = malloc(sizeof(void*) * 3);
+  scan_arg[0] = (void*)filler;
+  scan_arg[1] = buf;
+  scan_arg[2] = malloc(sizeof(off_t));
+  *(off_t*)(scan_arg[2]) = 0;
+  req->scan_arg = (void*)scan_arg;
+  req->type = SCAN;
+
+  int sequence = kv_submit(req);
+  struct kv_event* event = kv_getevent(sequence);
+  Assert(event->return_code >= 0);
 
   return 0;
 }
@@ -235,8 +291,8 @@ int kfs_releasedir(const char* path, struct fuse_file_info* fi) {
 static struct fuse_operations kfs_operations = {
   .init       = kfs_init,
   .getattr    = kfs_getattr,
-  .opendir    = NULL,
-  .readdir    = NULL,
+  .opendir    = kfs_opendir,
+  .readdir    = kfs_readdir,
   .releasedir = NULL,
   .mkdir      = NULL,
   .rmdir      = NULL,

@@ -17,6 +17,7 @@ struct slab {
   int fd;
 };
 
+void* slab_read_item_sync(struct slab* slab, int index);
 void slab_read_item(struct slab* slab, int index, struct io_context* ctx);
 void slab_write_item(struct slab* slab, int index, void* item, size_t size, struct io_context* ctx);
 void slab_remove_item(struct io_context* ctx);
