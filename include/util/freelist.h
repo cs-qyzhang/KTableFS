@@ -5,7 +5,7 @@ struct freelist;
 struct arena;
 
 struct freelist* freelist_new(struct arena* arena);
-void freelist_add(struct freelist* list, int index);
-int freelist_get(struct freelist* list);
+void freelist_add(struct freelist* list, void* data);
+void* freelist_get(struct freelist* list);
 
 #endif // KTABLEFS_UTIL_FREELIST_H_

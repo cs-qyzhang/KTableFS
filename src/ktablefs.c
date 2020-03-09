@@ -210,9 +210,8 @@ int kfs_getattr(const char* path, struct stat* st, struct fuse_file_info *fi) {
     *st = *root_stat;
   } else {
     struct kv_event* event = get_file(path);
-    if (event->return_code != 0) {
+    if (event->return_code != 0)
       return -ENOENT;
-    }
     update_atime(&event->value->handle);
     *st = event->value->handle.file->stat;
     st->st_blocks = (st->st_size + st->st_blksize - 1) / st->st_blksize;
@@ -298,6 +297,7 @@ static struct fuse_operations kfs_operations = {
   .rmdir      = NULL,
   .rename     = NULL,
 
+  .link       = NULL,
   .symlink    = NULL,
   .readlink   = NULL,
 

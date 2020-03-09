@@ -103,6 +103,8 @@ void* page_read_sync(struct pagecache* pgcache, hash_t hash, size_t page_offset)
   if (!lru) {
     lru = pagecache_find_free_page_(pgcache);
     lru->hash = hash;
+    lru->valid = 1;
+    lru->dirty = 0;
 
     int fd;
     int page_index;

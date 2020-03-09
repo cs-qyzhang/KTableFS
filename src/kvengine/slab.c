@@ -35,7 +35,7 @@ void slab_write_item(struct slab* slab, int index, void* item, size_t size, stru
 }
 
 int slab_get_free_index(struct slab* slab) {
-  int index = freelist_get(slab->freelist);
+  int index = (int)(uintptr_t)freelist_get(slab->freelist) - 1;
   if (index == -1) {
     index = slab->max_index++;
   }
@@ -46,5 +46,5 @@ int slab_get_free_index(struct slab* slab) {
 // callback function
 void slab_remove_item(struct io_context* ctx) {
   ctx->thread_data->slab->used--;
-  freelist_add(ctx->thread_data->slab->freelist, ctx->slab_index);
+  freelist_add(ctx->thread_data->slab->freelist, (void*)(uintptr_t)(ctx->slab_index + 1));
 }

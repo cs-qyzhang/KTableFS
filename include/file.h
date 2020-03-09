@@ -8,8 +8,8 @@
 
 struct kfs_file {
   struct stat stat;
-  uint32_t aggregation_file_no;
-  uint32_t aggregation_file_idx;
+  uint32_t slab_file_no;
+  uint32_t slab_file_idx;
   uint32_t big_file_no;
 };
 

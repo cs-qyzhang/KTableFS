@@ -11,6 +11,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include "util/hash.h"
+#include "util/freelist.h"
 #include "file.h"
 #include "options.h"
 #include "kv_impl.h"
@@ -21,73 +22,52 @@
 extern struct stat* root_stat;
 size_t datadir_path_len;
 
-pthread_mutex_t aggregation_file_lock = PTHREAD_MUTEX_INITIALIZER;
-uint32_t aggregation_file_no;
-uint32_t aggregation_file_max_idx;
-int* aggregation_fd;
-int max_aggregation_fd;
+pthread_mutex_t aggregation_lock = PTHREAD_MUTEX_INITIALIZER;
+uint32_t slab_file_no;
+uint32_t slab_file_max_idx;
+int* slab_file_fd;
+int slab_file_nr;
+struct freelist* aggregation_freelist;
+
 pthread_mutex_t big_file_lock = PTHREAD_MUTEX_INITIALIZER;
-uint32_t max_big_file_no;
+uint32_t big_file_nr;
+
 pthread_mutex_t file_ino_lock = PTHREAD_MUTEX_INITIALIZER;
 ino_t max_file_ino;
 
 void io_init() {
-  aggregation_file_no = 0;
-  aggregation_file_max_idx = 0;
-  aggregation_fd = malloc(1024 * sizeof(*aggregation_fd));
-  max_aggregation_fd = 1024;
-  max_big_file_no = 0;
+  slab_file_no = -1;
+  slab_file_max_idx = AGGREGATION_SLAB_NR;
+  slab_file_fd = malloc(1024 * sizeof(*slab_file_fd));
+  memset(slab_file_fd, 0, 1024 * sizeof(int));
+  slab_file_nr = 1024;
+  big_file_nr = 0;
   max_file_ino = 1;
   datadir_path_len = strlen(options.datadir);
+  aggregation_freelist = freelist_new(NULL);
 }
 
 void io_destroy() {
-  for (int i = 0; i <= aggregation_file_no; ++i)
-    close(aggregation_fd[i]);
-  free(aggregation_fd);
+  for (int i = 0; i <= slab_file_no; ++i)
+    close(slab_file_fd[i]);
+  free(slab_file_fd);
 }
 
-static char* get_aggregation_file_path(int file_no) {
+static char* get_slab_file_path(uint32_t file_no) {
   char* path = malloc(datadir_path_len + 20);
   sprintf(path, "%s/aggregation-%06d", options.datadir, file_no);
   return path;
 }
 
-static char* get_big_file_path(int file_no) {
+static char* get_big_file_path(uint32_t file_no) {
   char* path = malloc(datadir_path_len + 12);
   sprintf(path, "%s/big-%06d", options.datadir, file_no);
   return path;
 }
 
-static int get_aggregation_file_fd(struct kfs_file_handle* handle) {
-  if (handle->file->aggregation_file_no < max_aggregation_fd) {
-    if (!aggregation_fd[handle->file->aggregation_file_no]) {
-      char* path = get_aggregation_file_path(handle->file->aggregation_file_no);
-      aggregation_fd[handle->file->aggregation_file_no] = open(path, O_RDWR);
-      free(path);
-      Assert(aggregation_fd[handle->file->aggregation_file_no]);
-    }
-  } else {
-    pthread_mutex_lock(&aggregation_file_lock);
-    if (handle->file->aggregation_file_no < max_aggregation_fd) {
-      if (!aggregation_fd[handle->file->aggregation_file_no]) {
-        char* path = get_aggregation_file_path(handle->file->aggregation_file_no);
-        aggregation_fd[handle->file->aggregation_file_no] = open(path, O_RDWR);
-        free(path);
-        Assert(aggregation_fd[handle->file->aggregation_file_no]);
-      }
-    } else {
-      max_aggregation_fd += 1024;
-      aggregation_fd = realloc(aggregation_fd, max_aggregation_fd * sizeof(*aggregation_fd));
-
-      char* path = get_aggregation_file_path(handle->file->aggregation_file_no);
-      aggregation_fd[handle->file->aggregation_file_no] = open(path, O_RDWR);
-      free(path);
-      Assert(aggregation_fd[handle->file->aggregation_file_no]);
-    }
-    pthread_mutex_unlock(&aggregation_file_lock);
-  }
-  return aggregation_fd[handle->file->aggregation_file_no];
+// we will open all the slab file when fs is mounting
+static inline int get_slab_file_fd(struct kfs_file_handle* handle) {
+  return slab_file_fd[handle->file->slab_file_no];
 }
 
 static int get_big_file_fd(struct kfs_file_handle* handle) {
@@ -100,83 +80,65 @@ static int get_big_file_fd(struct kfs_file_handle* handle) {
   return handle->big_file_fd;
 }
 
-int write_file(struct kfs_file_handle* handle, void* data, size_t size, off_t offset) {
-  int ret = 0;
-  if (offset >= FILE_AGGREGATION_SIZE) {
-    int big_file_fd = get_big_file_fd(handle);
-    ret += pwrite(big_file_fd, data, size, offset - FILE_AGGREGATION_SIZE);
-  } else if (offset < FILE_AGGREGATION_SIZE && offset + size > FILE_AGGREGATION_SIZE) {
-    int aggregation_file_fd = get_aggregation_file_fd(handle);
-    ret += pwrite(aggregation_file_fd, data, FILE_AGGREGATION_SIZE - offset,
-        handle->file->aggregation_file_idx * FILE_AGGREGATION_SIZE + offset);
-    size -= FILE_AGGREGATION_SIZE - offset;
-    int big_file_fd = get_big_file_fd(handle);
-    ret += pwrite(big_file_fd, data + (FILE_AGGREGATION_SIZE - offset), size, 0);
-  } else {
-    int fd = get_aggregation_file_fd(handle);
-    ret += pwrite(fd, data, size, handle->file->aggregation_file_idx * FILE_AGGREGATION_SIZE + offset);
+// create a new slab file and open it
+void create_new_slab_file(uint32_t file_no) {
+  printf("create new slab file\n");
+  char* path = get_slab_file_path(file_no);
+  int fd = open(path, O_RDWR | O_CREAT,0644);
+  free(path);
+  assert(fd > 0);
+  ftruncate(fd, AGGREGATION_HEADER_SIZE);
+
+  if (file_no >= slab_file_nr) {
+    slab_file_nr += 1024;
+    slab_file_fd = realloc(slab_file_fd, slab_file_nr * sizeof(*slab_file_fd));
   }
-
-  if (offset + size > file_size(handle))
-    file_set_size(handle, offset + size);
-
-  update_mtime(handle);
-  update_ctime(handle);
-
-  return ret;
+  slab_file_fd[file_no] = fd;
 }
 
-int read_file(struct kfs_file_handle* handle, void* data, size_t size, off_t offset) {
-  int ret = 0;
-  if (offset >= file_size(handle)) {
-    return -EOF;
-  }
-  if (offset + size >= file_size(handle)) {
-    size = file_size(handle) - offset;
-  }
-  if (offset >= FILE_AGGREGATION_SIZE) {
-    int big_file_fd = get_big_file_fd(handle);
-    ret += pread(big_file_fd, data, size, offset - FILE_AGGREGATION_SIZE);
-  } else if (offset < FILE_AGGREGATION_SIZE && offset + size > FILE_AGGREGATION_SIZE) {
-    int aggregation_file_fd = get_aggregation_file_fd(handle);
-    ret += pread(aggregation_file_fd, data, FILE_AGGREGATION_SIZE - offset,
-        handle->file->aggregation_file_idx * FILE_AGGREGATION_SIZE + offset);
-    size -= FILE_AGGREGATION_SIZE - offset;
-    int big_file_fd = get_big_file_fd(handle);
-    ret += pread(big_file_fd, data + (FILE_AGGREGATION_SIZE - offset), size, 0);
+void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
+  pthread_mutex_lock(&aggregation_lock);
+  // get free slab
+  int* slab = freelist_get(aggregation_freelist);
+  if (slab == NULL) {
+    if (slab_file_max_idx < AGGREGATION_SLAB_NR) {
+      *file_no = slab_file_no;
+      *file_idx = slab_file_max_idx++;
+    } else {
+      *file_no = ++slab_file_no;
+      slab_file_max_idx = 0;
+      *file_idx = slab_file_max_idx++;
+      create_new_slab_file(*file_no);
+    }
   } else {
-    int fd = get_aggregation_file_fd(handle);
-    ret += pread(fd, data, size, handle->file->aggregation_file_idx * FILE_AGGREGATION_SIZE + offset);
+    *file_no = slab[0];
+    *file_idx = slab[1];
   }
-  update_mtime(handle);
-  update_ctime(handle);
-  return ret;
+
+  char* buf = malloc(4);
+  // update slab nr
+  pread(slab_file_fd[*file_no], buf, 4, 0);
+  *((uint32_t*)buf) += 1;
+  pwrite(slab_file_fd[*file_no], buf, 4, 0);
+
+  // update slab bitmap
+  int bitmap_pos = 4 + *file_idx / 8;
+  pread(slab_file_fd[*file_no], buf, 1, bitmap_pos);
+  buf[0] = buf[0] | (1U << (7 - (*file_idx % 8)));
+  pwrite(slab_file_fd[*file_no], buf, 1, bitmap_pos);
+
+  pthread_mutex_unlock(&aggregation_lock);
 }
 
 struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mode, size_t len) {
   struct kfs_file_handle* handle = malloc(sizeof(*handle));
   handle->file = malloc(sizeof(*handle->file));
+  memset(handle->file, 0, sizeof(*handle->file));
   handle->big_file_fd = 0;
   handle->offset = 0;
 
-  pthread_mutex_lock(&aggregation_file_lock);
-  if (aggregation_file_max_idx < AGGREGATION_FILE_SIZE / FILE_AGGREGATION_SIZE) {
-    handle->file->aggregation_file_no = aggregation_file_no;
-    handle->file->aggregation_file_idx = aggregation_file_max_idx++;
-  } else {
-    handle->file->aggregation_file_no = ++aggregation_file_no;
-    aggregation_file_max_idx = 0;
-    handle->file->aggregation_file_idx = aggregation_file_max_idx++;
-  }
-  pthread_mutex_unlock(&aggregation_file_lock);
-
-  // if need new aggregation file, create it.
-  if (handle->file->aggregation_file_idx == 0) {
-    char* path = get_aggregation_file_path(handle->file->aggregation_file_no);
-    int fd = creat(path, 0644);
-    Assert(fd != -1);
-    close(fd);
-  }
+  allocate_aggregation_slab(&handle->file->slab_file_no,
+                            &handle->file->slab_file_idx);
 
   handle->file->big_file_no = 0;
 
@@ -219,4 +181,66 @@ struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mod
   Assert(event->return_code == 0);
 
   return event;
+}
+
+int write_file(struct kfs_file_handle* handle, void* data, size_t size, off_t offset) {
+  int ret = 0;
+
+  if (offset + size > file_size(handle))
+    file_set_size(handle, offset + size);
+
+  if (offset >= AGGREGATION_SLAB_SIZE) {
+    int big_file_fd = get_big_file_fd(handle);
+    ret += pwrite(big_file_fd, data, size, offset - AGGREGATION_SLAB_SIZE);
+  } else if (offset < AGGREGATION_SLAB_SIZE && offset + size > AGGREGATION_SLAB_SIZE) {
+    int slab_file_fd = get_slab_file_fd(handle);
+    ret += pwrite(slab_file_fd, data, AGGREGATION_SLAB_SIZE - offset,
+        AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset);
+    size -= AGGREGATION_SLAB_SIZE - offset;
+    int big_file_fd = get_big_file_fd(handle);
+    ret += pwrite(big_file_fd, data + (AGGREGATION_SLAB_SIZE - offset), size, 0);
+  } else {
+    int slab_file_fd = get_slab_file_fd(handle);
+    ret += pwrite(slab_file_fd, data, size,
+        AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset);
+  }
+
+  update_mtime(handle);
+  update_ctime(handle);
+
+  return ret;
+}
+
+int read_file(struct kfs_file_handle* handle, void* data, size_t size, off_t offset) {
+  int ret = 0;
+  if (offset >= file_size(handle)) {
+    return -EOF;
+  }
+  if (offset + size >= file_size(handle)) {
+    size = file_size(handle) - offset;
+  }
+  if (offset >= AGGREGATION_SLAB_SIZE) {
+    int big_file_fd = get_big_file_fd(handle);
+    ret += pread(big_file_fd, data, size, offset - AGGREGATION_SLAB_SIZE);
+  } else if (offset < AGGREGATION_SLAB_SIZE && offset + size > AGGREGATION_SLAB_SIZE) {
+    int slab_file_fd = get_slab_file_fd(handle);
+    ret += pread(slab_file_fd, data, AGGREGATION_SLAB_SIZE - offset,
+        AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset);
+    size -= AGGREGATION_SLAB_SIZE - offset;
+    int big_file_fd = get_big_file_fd(handle);
+    ret += pread(big_file_fd, data + (AGGREGATION_SLAB_SIZE - offset), size, 0);
+  } else {
+    int slab_file_fd = get_slab_file_fd(handle);
+    ret += pread(slab_file_fd, data, size,
+        AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset);
+  }
+
+  if (ret == -1) {
+    perror(strerror(errno));
+  }
+
+  update_mtime(handle);
+  update_ctime(handle);
+
+  return ret;
 }
