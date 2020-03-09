@@ -106,6 +106,7 @@ int kfs_mknod(const char* path, mode_t mode, dev_t dev) {
     end--;
 
   ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
+  assert(dir_ino >= 0);
   struct kv_event* event = create_file(dir_ino, end + 1, mode, len - (end - path + 1));
   return event->return_code;
 }
@@ -122,6 +123,7 @@ int kfs_create(const char* path, mode_t mode, struct fuse_file_info* fi) {
     end--;
 
   ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
+  assert(dir_ino >= 0);
   struct kv_event* event = create_file(dir_ino, end + 1, mode, len - (end - path + 1));
   if (event->return_code == 0) {
     fi->fh = (uint64_t)&event->value->handle;
@@ -136,6 +138,8 @@ struct kv_event* get_file(const char* path) {
     end--;
 
   ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
+  if (dir_ino == -1)
+    return NULL;
 
   struct kv_request* req = malloc(sizeof(*req));
   memset(req, 0, sizeof(*req));
@@ -149,6 +153,7 @@ struct kv_event* get_file(const char* path) {
   req->type = GET;
 
   int sequence = kv_submit(req);
+  free(req);
   return kv_getevent(sequence);
 }
 
@@ -163,7 +168,7 @@ int kfs_open(const char* path, struct fuse_file_info* fi) {
 
   struct kv_event* event = get_file(path);
 
-  if (event->return_code != 0)
+  if (event == NULL || event->return_code != 0)
     return -ENOENT;
 
   fi->fh = (uint64_t)&event->value->handle;
@@ -192,25 +197,64 @@ int kfs_write(const char* path, const char* buf, size_t size, off_t offset, stru
   return write_file(handle, (void*)buf, size, offset);
 }
 
+int kfs_unlink(const char* path) {
+  print_info("unlink", path);
+
+  size_t len = strlen(path);
+  char* end = (char*)path + (len - 1);
+  while (*end != '/')
+    end--;
+
+  ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
+  if (dir_ino == -1)
+    return -ENOENT;
+
+  struct kv_request* req = malloc(sizeof(*req));
+  memset(req, 0, sizeof(*req));
+  req->key = malloc(sizeof(*req->key));
+  req->key->dir_ino = dir_ino;
+  req->key->length = len - (end - path) - 1;
+  req->key->data = malloc(req->key->length + 1);
+  memcpy(req->key->data, end + 1, req->key->length);
+  req->key->data[req->key->length] = '\0';
+  req->key->hash = file_name_hash(end + 1, req->key->length);
+  req->type = GET;
+
+  int sequence = kv_submit(req);
+  struct kv_event* event =  kv_getevent(sequence);
+
+  if (event->return_code != 0)
+    return -ENOENT;
+  
+  remove_file((struct kfs_file_handle*)event->value);
+
+  req->type = DELETE;
+  sequence = kv_submit(req);
+  free(req);
+  event = kv_getevent(sequence);
+
+  return event->return_code;
+}
+
 int kfs_getattr(const char* path, struct stat* st, struct fuse_file_info *fi) {
   print_info("getattr", path);
 
   // GNU's definitions of the attributes (http://www.gnu.org/software/libc/manual/html_node/Attribute-Meanings.html):
-  //    st_uid:   The user ID of the file’s owner.
+  //    st_uid:   The user ID of the file's owner.
   //    st_gid:   The group ID of the file.
   //    st_atime: This is the last access time for the file.
   //    st_mtime: This is the time of the last modification to the contents of the file.
   //    st_mode:  Specifies the mode of the file. This includes file type information (see Testing File Type) and the file permission bits (see Permission Bits).
   //    st_nlink: The number of hard links to the file. This count keeps track of how many directories have entries for this file. If the count is ever decremented to zero, then the file itself is discarded as soon 
   //              as no process still holds it open. Symbolic links are not counted in the total.
-  //    st_size:  This specifies the size of a regular file in bytes. For files that are really devices this field isn’t usually meaningful. For symbolic links this specifies the length of the file name the link refers to.
+  //    st_size:  This specifies the size of a regular file in bytes. For files that are really devices this field isn't usually meaningful. For symbolic links this specifies the length of the file name the link refers to.
 
   if (path_is_root(path)) {
     root_stat->st_atime = time(NULL);
     *st = *root_stat;
   } else {
     struct kv_event* event = get_file(path);
-    if (event->return_code != 0)
+    if (event == NULL || event->return_code != 0)
       return -ENOENT;
     update_atime(&event->value->handle);
     *st = event->value->handle.file->stat;
@@ -218,6 +262,50 @@ int kfs_getattr(const char* path, struct stat* st, struct fuse_file_info *fi) {
   }
 
   return 0;
+}
+
+int kfs_mkdir(const char* path, mode_t mode) {
+  print_info("mkdir", path);
+
+  size_t len = strlen(path);
+  char* end = (char*)path + (len - 1);
+  while (*end != '/')
+    end--;
+
+  ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
+  assert(dir_ino >= 0);
+  struct kv_event* event = create_file(dir_ino, end + 1, mode | S_IFDIR,
+      len - (end - path + 1));
+  return event->return_code;
+}
+
+int kfs_rmdir(const char* path) {
+  print_info("rmdir", path);
+
+  size_t len = strlen(path);
+  char* end = (char*)path + (len - 1);
+  while (*end != '/')
+    end--;
+
+  ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
+  if (dir_ino == -1)
+    return -ENOENT;
+
+  struct kv_request* req = malloc(sizeof(*req));
+  memset(req, 0, sizeof(*req));
+  req->key = malloc(sizeof(*req->key));
+  req->key->dir_ino = dir_ino;
+  req->key->length = len - (end - path) - 1;
+  req->key->data = malloc(req->key->length + 1);
+  memcpy(req->key->data, end + 1, req->key->length);
+  req->key->data[req->key->length] = '\0';
+  req->key->hash = file_name_hash(end + 1, req->key->length);
+  req->type = DELETE;
+  int sequence = kv_submit(req);
+  free(req);
+  struct kv_event* event = kv_getevent(sequence);
+
+  return event->return_code;
 }
 
 int kfs_opendir(const char* path, struct fuse_file_info* fi) {
@@ -229,10 +317,11 @@ int kfs_opendir(const char* path, struct fuse_file_info* fi) {
   }
 
   struct kv_event* event = get_file(path);
-  if (event->return_code != 0)
+  if (event == NULL || event->return_code != 0)
     return -ENOENT;
 
   fi->fh = (uint64_t)&event->value->handle;
+  update_atime(&event->value->handle);
   return 0;
 }
 
@@ -275,6 +364,7 @@ int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offse
   req->type = SCAN;
 
   int sequence = kv_submit(req);
+  free(req);
   struct kv_event* event = kv_getevent(sequence);
   Assert(event->return_code >= 0);
 
@@ -293,8 +383,8 @@ static struct fuse_operations kfs_operations = {
   .opendir    = kfs_opendir,
   .readdir    = kfs_readdir,
   .releasedir = NULL,
-  .mkdir      = NULL,
-  .rmdir      = NULL,
+  .mkdir      = kfs_mkdir,
+  .rmdir      = kfs_rmdir,
   .rename     = NULL,
 
   .link       = NULL,
@@ -306,7 +396,7 @@ static struct fuse_operations kfs_operations = {
   .write      = kfs_write,
   .create     = kfs_create,
   .mknod      = NULL,
-  .unlink     = NULL,
+  .unlink     = kfs_unlink,
   .release    = NULL,
   .chmod      = NULL,
   .chown      = NULL,

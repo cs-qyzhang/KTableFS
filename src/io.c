@@ -28,6 +28,7 @@ uint32_t slab_file_max_idx;
 int* slab_file_fd;
 int slab_file_nr;
 struct freelist* aggregation_freelist;
+char slab_buf[4]; // used to read slab file's head
 
 pthread_mutex_t big_file_lock = PTHREAD_MUTEX_INITIALIZER;
 uint32_t big_file_nr;
@@ -72,6 +73,11 @@ static inline int get_slab_file_fd(struct kfs_file_handle* handle) {
 
 static int get_big_file_fd(struct kfs_file_handle* handle) {
   if (handle->big_file_fd == 0) {
+    if (handle->file->big_file_no == 0) {
+      pthread_mutex_lock(&big_file_lock);
+      handle->file->big_file_no = ++big_file_nr;
+      pthread_mutex_unlock(&big_file_lock);
+    }
     char* path = get_big_file_path(handle->file->big_file_no);
     handle->big_file_fd = open(path, O_RDWR | O_CREAT, 0666);
     free(path);
@@ -81,7 +87,7 @@ static int get_big_file_fd(struct kfs_file_handle* handle) {
 }
 
 // create a new slab file and open it
-void create_new_slab_file(uint32_t file_no) {
+static void create_new_slab_file(uint32_t file_no) {
   printf("create new slab file\n");
   char* path = get_slab_file_path(file_no);
   int fd = open(path, O_RDWR | O_CREAT,0644);
@@ -96,7 +102,7 @@ void create_new_slab_file(uint32_t file_no) {
   slab_file_fd[file_no] = fd;
 }
 
-void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
+static void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
   pthread_mutex_lock(&aggregation_lock);
   // get free slab
   int* slab = freelist_get(aggregation_freelist);
@@ -115,17 +121,16 @@ void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
     *file_idx = slab[1];
   }
 
-  char* buf = malloc(4);
   // update slab nr
-  pread(slab_file_fd[*file_no], buf, 4, 0);
-  *((uint32_t*)buf) += 1;
-  pwrite(slab_file_fd[*file_no], buf, 4, 0);
+  pread(slab_file_fd[*file_no], slab_buf, 4, 0);
+  *((uint32_t*)slab_buf) += 1;
+  pwrite(slab_file_fd[*file_no], slab_buf, 4, 0);
 
   // update slab bitmap
   int bitmap_pos = 4 + *file_idx / 8;
-  pread(slab_file_fd[*file_no], buf, 1, bitmap_pos);
-  buf[0] = buf[0] | (1U << (7 - (*file_idx % 8)));
-  pwrite(slab_file_fd[*file_no], buf, 1, bitmap_pos);
+  pread(slab_file_fd[*file_no], slab_buf, 1, bitmap_pos);
+  slab_buf[0] = slab_buf[0] | (1U << (7 - (*file_idx % 8)));
+  pwrite(slab_file_fd[*file_no], slab_buf, 1, bitmap_pos);
 
   pthread_mutex_unlock(&aggregation_lock);
 }
@@ -137,8 +142,10 @@ struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mod
   handle->big_file_fd = 0;
   handle->offset = 0;
 
-  allocate_aggregation_slab(&handle->file->slab_file_no,
-                            &handle->file->slab_file_idx);
+  if (!(mode & S_IFDIR)) {
+    allocate_aggregation_slab(&handle->file->slab_file_no,
+                              &handle->file->slab_file_idx);
+  }
 
   handle->file->big_file_no = 0;
 
@@ -235,12 +242,30 @@ int read_file(struct kfs_file_handle* handle, void* data, size_t size, off_t off
         AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset);
   }
 
-  if (ret == -1) {
-    perror(strerror(errno));
-  }
-
-  update_mtime(handle);
-  update_ctime(handle);
+  update_atime(handle);
 
   return ret;
+}
+
+void remove_file(struct kfs_file_handle* handle) {
+  int* slab_entry = malloc(2 * sizeof(int));
+  slab_entry[0] = handle->file->slab_file_no;
+  slab_entry[1] = handle->file->slab_file_idx;
+
+  pthread_mutex_lock(&aggregation_lock);
+  // add free slab to freelist
+  freelist_add(aggregation_freelist, slab_entry);
+
+  // update slab nr
+  pread(slab_file_fd[handle->file->slab_file_no], slab_buf, 4, 0);
+  *((uint32_t*)slab_buf) -= 1;
+  pwrite(slab_file_fd[handle->file->slab_file_no], slab_buf, 4, 0);
+
+  // update slab bitmap
+  int bitmap_pos = 4 + handle->file->slab_file_idx / 8;
+  pread(slab_file_fd[handle->file->slab_file_no], slab_buf, 1, bitmap_pos);
+  slab_buf[0] = slab_buf[0] ^ (1U << (7 - (handle->file->slab_file_idx % 8)));
+  pwrite(slab_file_fd[handle->file->slab_file_no], slab_buf, 1, bitmap_pos);
+
+  pthread_mutex_unlock(&aggregation_lock);
 }

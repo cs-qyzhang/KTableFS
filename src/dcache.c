@@ -85,11 +85,13 @@ ino_t dcache_lookup(struct dentrycache* dcache, const char* dir, size_t len) {
   if (val) {
     return (ino_t)val - 1;
   } else {
-    char* pos = end;
+    char* pos = end - 1;
     while (*pos != '/')
       pos--;
 
     ino_t parent_dir = dcache_lookup(dcache, dir, (pos - dir) + 1);
+    if (parent_dir == -1)
+      return -1;
 
     struct kv_request* req = malloc(sizeof(*req));
     req->key = malloc(sizeof(*req->key));

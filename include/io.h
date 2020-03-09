@@ -11,5 +11,6 @@ void io_destroy();
 int write_file(struct kfs_file_handle* handle, void* data, size_t size, off_t offset);
 int read_file(struct kfs_file_handle* handle, void* data, size_t size, off_t offset);
 struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mode, size_t len);
+void remove_file(struct kfs_file_handle* handle);
 
 #endif // KTABLEFS_IO_H_
