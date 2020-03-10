@@ -6,18 +6,44 @@
 #include <stddef.h>
 #include <time.h>
 
+#define KFS_REG       0
+#define KFS_HARDLINK  1
+#define KFS_SYMLINK   2
+
+struct kfs_stat {
+  uint32_t atime;
+  uint32_t mtime;
+  uint32_t ctime;
+  mode_t st_mode;
+  uid_t st_uid;
+  gid_t st_gid;
+  nlink_t st_nlink;
+  ino_t st_ino;
+  off_t st_size;
+};
+
+/*
+ * the struct is designed that it has no padding, and it's size is 64,
+ * which is as same as cache line.
+ */
 struct kfs_file {
-  struct stat stat;
+  uint16_t type;
+  uint16_t has_blob;
   uint32_t slab_file_no;
   uint32_t slab_file_idx;
   uint32_t big_file_no;
+  union {
+    struct kfs_stat stat;
+    char blob[1];
+  };
 };
 
 struct kfs_file_handle {
   struct kfs_file* file;
-  off_t offset;
   int big_file_fd;
 };
+
+extern struct stat* root_stat;
 
 static inline ino_t file_ino(struct kfs_file_handle* handle) {
   return handle->file->stat.st_ino;
@@ -36,15 +62,33 @@ static inline void file_set_size(struct kfs_file_handle* handle, size_t size) {
 }
 
 static inline void update_atime(struct kfs_file_handle* handle) {
-  handle->file->stat.st_atime = time(NULL);
+  handle->file->stat.atime = time(NULL);
 }
 
 static inline void update_ctime(struct kfs_file_handle* handle) {
-  handle->file->stat.st_ctime = time(NULL);
+  handle->file->stat.ctime = time(NULL);
 }
 
 static inline void update_mtime(struct kfs_file_handle* handle) {
-  handle->file->stat.st_mtime = time(NULL);
+  handle->file->stat.mtime = time(NULL);
+}
+
+static inline void file_fill_stat(struct stat* dst, struct kfs_stat* src) {
+  dst->st_blksize = root_stat->st_blksize;
+  dst->st_dev = root_stat->st_dev;
+  dst->st_rdev = root_stat->st_rdev;
+
+  dst->st_atime = (time_t)src->atime;
+  dst->st_mtime = (time_t)src->mtime;
+  dst->st_ctime = (time_t)src->ctime;
+  dst->st_mode = src->st_mode;
+  dst->st_uid = src->st_uid;
+  dst->st_gid = src->st_gid;
+  dst->st_nlink = src->st_nlink;
+  dst->st_ino = src->st_ino;
+  dst->st_size = src->st_size;
+
+  dst->st_blocks = (dst->st_size + dst->st_blksize - 1) / dst->st_blksize;
 }
 
 #endif // KTABLEFS_FILE_H_

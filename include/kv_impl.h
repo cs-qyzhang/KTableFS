@@ -22,7 +22,7 @@ struct value {
 
 struct item_head {
   // -1 means valid, 0 means deleted
-  int8_t valid;
+  int64_t valid;
   union {
     struct {
       uint64_t hash    : 32;  // LSB

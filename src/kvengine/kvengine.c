@@ -165,15 +165,16 @@ void process_delete_request(struct kv_request* req, struct thread_data* thread_d
   int slab_idx = (int)(uintptr_t)val - 1;
 
   // only change item's valid to 0
-  char* item = malloc(1);
-  item[0] = 0;
+  int64_t* item_valid = malloc(sizeof(*item_valid));
+  *item_valid = -1;
 
   struct io_context* ctx = io_context_new(thread_data, req, slab_idx);
   io_context_insert_callback(ctx->do_at_io_wait, index_remove_wrapper);
   io_context_insert_callback(ctx->do_at_io_wait, slab_remove_item);
   io_context_insert_callback(ctx->do_at_io_finish, kv_delete_finish);
 
-  slab_write_item(thread_data->slab, slab_idx, item, 1, ctx);
+  slab_write_item(thread_data->slab, slab_idx, item_valid, sizeof(*item_valid), ctx);
+  free(item_valid);
 }
 
 void scan_request_function(void* key, void* value, void* scan_arg) {

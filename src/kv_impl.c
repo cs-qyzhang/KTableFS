@@ -28,7 +28,6 @@ void item_to_kv(void* item, struct key** key, struct value** value) {
     *value = malloc(sizeof(**value));
     (*value)->handle.file = (struct kfs_file*)((char*)item +
         (sizeof(struct item_head) + ((struct item_head*)item)->length));
-    (*value)->handle.offset = 0;
     (*value)->handle.big_file_fd = 0;
   }
 }
@@ -46,7 +45,6 @@ struct value* valuedup(struct value* value) {
   struct value* new = malloc(sizeof(*new));
   new->handle.file = malloc(sizeof(*(new->handle.file)));
   memcpy(new->handle.file, value->handle.file, sizeof(*(new->handle.file)));
-  new->handle.offset = value->handle.offset;
   new->handle.big_file_fd = value->handle.big_file_fd;
   return new;
 }

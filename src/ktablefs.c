@@ -72,7 +72,7 @@ void* kfs_init(struct fuse_conn_info* conn, struct fuse_config* cfg) {
   dcache = dcache_new();
 
   root_handle.file = malloc(sizeof(*(root_handle.file)));
-  root_stat = &root_handle.file->stat;
+  root_stat = malloc(sizeof(*root_stat));
 
   memset(root_stat, 0, sizeof(*root_stat));
   struct stat statbuf;
@@ -81,6 +81,7 @@ void* kfs_init(struct fuse_conn_info* conn, struct fuse_config* cfg) {
   root_stat->st_blocks = statbuf.st_blocks;
   root_stat->st_dev = statbuf.st_dev;
   root_stat->st_rdev = statbuf.st_rdev;
+  root_stat->st_ino = 0;
   root_stat->st_uid = getuid();
   root_stat->st_gid = getgid();
   root_stat->st_mode = S_IFDIR | 0755;
@@ -89,6 +90,16 @@ void* kfs_init(struct fuse_conn_info* conn, struct fuse_config* cfg) {
   root_stat->st_atime = time(NULL);
   root_stat->st_ctime = time(NULL);
   root_stat->st_mtime = time(NULL);
+
+  root_handle.file->stat.atime = root_stat->st_atime;
+  root_handle.file->stat.mtime = root_stat->st_mtime;
+  root_handle.file->stat.ctime = root_stat->st_ctime;
+  root_handle.file->stat.st_uid = root_stat->st_uid;
+  root_handle.file->stat.st_gid = root_stat->st_gid;
+  root_handle.file->stat.st_ino = root_stat->st_ino;
+  root_handle.file->stat.st_mode = root_stat->st_mode;
+  root_handle.file->stat.st_nlink = root_stat->st_nlink;
+  root_handle.file->stat.st_size = root_stat->st_size;
 
   return NULL;
 }
@@ -257,8 +268,8 @@ int kfs_getattr(const char* path, struct stat* st, struct fuse_file_info *fi) {
     if (event == NULL || event->return_code != 0)
       return -ENOENT;
     update_atime(&event->value->handle);
-    *st = event->value->handle.file->stat;
-    st->st_blocks = (st->st_size + st->st_blksize - 1) / st->st_blksize;
+    *st = *root_stat;
+    file_fill_stat(st, &event->value->handle.file->stat);
   }
 
   return 0;
@@ -329,10 +340,12 @@ void readdir_scan(void* key, void* value, void* scan_arg) {
   fuse_fill_dir_t filler = ((void**)scan_arg)[0];
   void* buf = ((void**)scan_arg)[1];
   off_t* offset = ((void**)scan_arg)[2];
+  struct stat* stat = ((void**)scan_arg)[3];
   struct kfs_file_handle* handle = &(((struct value*)value)->handle);
 
   *offset += 1;
-  filler(buf, ((struct key*)key)->data, &handle->file->stat, 0, 0);
+  file_fill_stat(stat, &handle->file->stat);
+  filler(buf, ((struct key*)key)->data, stat, 0, 0);
 }
 
 int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset,
@@ -340,8 +353,10 @@ int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offse
   print_info("readdir", path);
 
   struct kfs_file_handle* handle = (struct kfs_file_handle*)fi->fh;
-  filler(buf, ".", &handle->file->stat, 0, 0);
-  filler(buf, "..", &handle->file->stat, 0, 0);
+  struct stat* stat_buf = malloc(sizeof(*stat_buf));
+  file_fill_stat(stat_buf, &handle->file->stat);
+  filler(buf, ".", stat_buf, 0, 0);
+  filler(buf, "..", stat_buf, 0, 0);
 
   ino_t dir_ino = file_ino(handle);
   struct kv_request* req = malloc(sizeof(*req));
@@ -359,6 +374,7 @@ int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offse
   scan_arg[0] = (void*)filler;
   scan_arg[1] = buf;
   scan_arg[2] = malloc(sizeof(off_t));
+  scan_arg[3] = stat_buf;
   *(off_t*)(scan_arg[2]) = 0;
   req->scan_arg = (void*)scan_arg;
   req->type = SCAN;
@@ -367,6 +383,9 @@ int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offse
   free(req);
   struct kv_event* event = kv_getevent(sequence);
   Assert(event->return_code >= 0);
+  free(scan_arg[3]);
+  free(scan_arg);
+  free(event);
 
   return 0;
 }

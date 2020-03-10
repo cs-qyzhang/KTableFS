@@ -140,7 +140,6 @@ struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mod
   handle->file = malloc(sizeof(*handle->file));
   memset(handle->file, 0, sizeof(*handle->file));
   handle->big_file_fd = 0;
-  handle->offset = 0;
 
   if (!(mode & S_IFDIR)) {
     allocate_aggregation_slab(&handle->file->slab_file_no,
@@ -151,9 +150,6 @@ struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mod
 
   handle->file->stat.st_uid = root_stat->st_uid;
   handle->file->stat.st_gid = root_stat->st_gid;
-  handle->file->stat.st_dev = root_stat->st_dev;
-  handle->file->stat.st_rdev = root_stat->st_rdev;
-  handle->file->stat.st_blksize = root_stat->st_blksize;
   handle->file->stat.st_nlink = 1;
   handle->file->stat.st_mode = mode;
   update_atime(handle);
