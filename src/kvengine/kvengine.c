@@ -214,24 +214,12 @@ int worker_deque_request(struct thread_data* thread_data) {
     struct kv_request* req = dequeue(kv_que);
     Assert(req);
     switch (req->type) {
-      case PUT:
-        process_put_request(req, thread_data);
-        break;
-      case GET:
-        process_get_request(req, thread_data);
-        break;
-      case UPDATE:
-        process_update_request(req, thread_data);
-        break;
-      case DELETE:
-        process_delete_request(req, thread_data);
-        break;
-      case SCAN:
-        process_scan_request(req, thread_data);
-        break;
-      default:
-        Assert(0);
-        break;
+      case PUT:    process_put_request(req, thread_data); break;
+      case GET:    process_get_request(req, thread_data); break;
+      case UPDATE: process_update_request(req, thread_data); break;
+      case DELETE: process_delete_request(req, thread_data); break;
+      case SCAN:   process_scan_request(req, thread_data); break;
+      default:     Assert(0); break;
     }
     req_nr++;
   }

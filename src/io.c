@@ -249,6 +249,7 @@ void remove_file(struct kfs_file_handle* handle) {
   slab_entry[1] = handle->file->slab_file_idx;
 
   pthread_mutex_lock(&aggregation_lock);
+
   // add free slab to freelist
   freelist_add(aggregation_freelist, slab_entry);
 
