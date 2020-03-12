@@ -368,6 +368,10 @@ int kfs_opendir(const char* path, struct fuse_file_info* fi) {
 }
 
 void readdir_scan(void* key, void* value, void* scan_arg) {
+  // KFS_HARDLINK
+  if (((struct key*)key)->data == NULL)
+    return;
+
   fuse_fill_dir_t filler = ((void**)scan_arg)[0];
   void* buf = ((void**)scan_arg)[1];
   off_t* offset = ((void**)scan_arg)[2];
