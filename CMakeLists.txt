@@ -6,14 +6,15 @@ project(KTableFS)
 set(KTableFS_VERSION_MAJOR 0)
 set(KTableFS_VERSION_MINOR 1)
 set(PAGE_SIZE 4096)
+set(PAGECACHE_NR_PAGE 4096)
 set(ARENA_NB_BLOCKS 256)
 set(ARENA_BLOCK_SIZE PAGE_SIZE)
 set(AIO_MAX_EVENTS 64)
-set(BTREE_ORDER 16)
-set(KVENGINE_THREAD_NR 1)
-set(AGGREGATION_SLAB_SIZE "(1024)")
-set(AGGREGATION_SLAB_NR "1024")
-set(AGGREGATION_HEADER_SIZE "4096")  # (4+((AGGREGATION_SLAB_NR+7)/8)+BLOCK_SIZE-1)/BLOCK_SIZE*BLOCK_SIZE
+set(BTREE_ORDER 8)
+set(KVENGINE_THREAD_NR 4)
+set(AGGREGATION_SLAB_SIZE "(1024 * 1024)")
+set(AGGREGATION_SLAB_NR 4096)
+set(AGGREGATION_HEADER_SIZE 4096)  # (4+((AGGREGATION_SLAB_NR+7)/8)+BLOCK_SIZE-1)/BLOCK_SIZE*BLOCK_SIZE
 
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_C_STANDARD 11)
@@ -99,6 +100,13 @@ target_sources(ktablefs
     "${PROJECT_SOURCE_DIR}/util/arena.c"
 )
 target_link_libraries(ktablefs pthread fuse3)
+
+add_executable(ext4-fuse)
+target_sources(ext4-fuse
+  PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/ext4_fuse.c"
+)
+target_link_libraries(ext4-fuse pthread fuse3)
 
 add_executable(kfs_test "${PROJECT_SOURCE_DIR}/test/kfs_test.c")
 add_test(kfs_test kfs_test)

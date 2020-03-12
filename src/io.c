@@ -36,6 +36,8 @@ uint32_t big_file_nr;
 pthread_mutex_t file_ino_lock = PTHREAD_MUTEX_INITIALIZER;
 ino_t max_file_ino;
 
+__thread struct kv_request req;
+
 void io_init() {
   slab_file_no = -1;
   slab_file_max_idx = AGGREGATION_SLAB_NR;
@@ -88,7 +90,6 @@ static int get_big_file_fd(struct kfs_file_handle* handle) {
 
 // create a new slab file and open it
 static void create_new_slab_file(uint32_t file_no) {
-  printf("create new slab file\n");
   char* path = get_slab_file_path(file_no);
   int fd = open(path, O_RDWR | O_CREAT,0644);
   free(path);
@@ -135,19 +136,13 @@ static void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
   pthread_mutex_unlock(&aggregation_lock);
 }
 
-struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mode, size_t len) {
+struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mode, size_t len, uint16_t type) {
   struct kfs_file_handle* handle = malloc(sizeof(*handle));
-  handle->file = malloc(sizeof(*handle->file));
-  memset(handle->file, 0, sizeof(*handle->file));
   handle->big_file_fd = 0;
 
-  if (!(mode & S_IFDIR)) {
-    allocate_aggregation_slab(&handle->file->slab_file_no,
-                              &handle->file->slab_file_idx);
-  }
-
-  handle->file->big_file_no = 0;
-
+  handle->file = malloc(sizeof(*handle->file));
+  memset(handle->file, 0, sizeof(*handle->file));
+  handle->file->type = type;
   handle->file->stat.st_uid = root_stat->st_uid;
   handle->file->stat.st_gid = root_stat->st_gid;
   handle->file->stat.st_nlink = 1;
@@ -161,27 +156,32 @@ struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mod
   file_set_ino(handle, max_file_ino++);
   pthread_mutex_unlock(&file_ino_lock);
 
-  struct kv_request* req = malloc(sizeof(*req));
-  memset(req, 0, sizeof(*req));
-  req->key = malloc(sizeof(*req->key));
-  req->key->dir_ino = parent_ino;
-  req->key->length = len;
-  req->key->data = malloc(req->key->length + 1);
-  memcpy(req->key->data, file_name, req->key->length);
-  req->key->data[req->key->length] = '\0';
-  req->key->hash = file_name_hash(file_name, req->key->length);
-  req->value = (struct value*)handle;
-  req->type = PUT;
+  if (!(mode & S_IFDIR)) {
+    allocate_aggregation_slab(&handle->file->slab_file_no,
+                              &handle->file->slab_file_idx);
+  }
 
-  int sequence = kv_submit(req);
+  memset(&req, 0, sizeof(req));
+  req.key = malloc(sizeof(req.key));
+  req.key->dir_ino = parent_ino;
+  req.key->length = len;
+  req.key->data = malloc(req.key->length + 1);
+  memcpy(req.key->data, file_name, req.key->length);
+  req.key->data[req.key->length] = '\0';
+  req.key->hash = file_name_hash(file_name, req.key->length);
+  req.value = (struct value*)handle;
+  req.type = PUT;
+
+  int sequence = kv_submit(&req);
   struct kv_event* event = kv_getevent(sequence);
   Assert(event->return_code == 0);
 
-  req->value = NULL;
-  req->type = GET;
-  sequence = kv_submit(req);
+  req.value = NULL;
+  req.type = GET;
+  sequence = kv_submit(&req);
   event = kv_getevent(sequence);
   Assert(event->return_code == 0);
+  event->value->handle.key = req.key;
 
   return event;
 }
@@ -210,6 +210,15 @@ int write_file(struct kfs_file_handle* handle, void* data, size_t size, off_t of
 
   update_mtime(handle);
   update_ctime(handle);
+
+  memset(&req, 0, sizeof(req));
+  req.key = handle->key;
+  req.value = (struct value*)handle;
+  req.type = UPDATE;
+
+  int sequence = kv_submit(&req);
+  struct kv_event* event = kv_getevent(sequence);
+  Assert(event->return_code == 0);
 
   return ret;
 }

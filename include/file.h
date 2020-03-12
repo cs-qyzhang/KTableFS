@@ -6,9 +6,10 @@
 #include <stddef.h>
 #include <time.h>
 
-#define KFS_REG       0
-#define KFS_HARDLINK  1
-#define KFS_SYMLINK   2
+// bit set
+#define KFS_REG       1
+#define KFS_HARDLINK  2
+#define KFS_SYMLINK   4
 
 struct kfs_stat {
   uint32_t atime;
@@ -28,7 +29,7 @@ struct kfs_stat {
  */
 struct kfs_file {
   uint16_t type;
-  uint16_t has_blob;
+  uint16_t next;
   uint32_t slab_file_no;
   uint32_t slab_file_idx;
   uint32_t big_file_no;
@@ -38,8 +39,11 @@ struct kfs_file {
   };
 };
 
+struct key;
+
 struct kfs_file_handle {
   struct kfs_file* file;
+  struct key* key;
   int big_file_fd;
 };
 

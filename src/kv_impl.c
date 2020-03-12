@@ -8,11 +8,12 @@ size_t kv_to_item(struct key* key, struct value* value, void** item) {
   head.val = key->val;
   head.valid = -1;
   size_t item_size;
-  item_size = sizeof(head) + key->length + sizeof(*(value->handle.file));
+  item_size = sizeof(head) + key->length + sizeof(*value->handle.file);
   *item = malloc(item_size);
   memcpy(*item, &head, sizeof(head));
-  memcpy(*item + sizeof(head), key->data, key->length);
-  memcpy(*item + sizeof(head) + key->length, value->handle.file, sizeof(*(value->handle.file)));
+  if (key->length)
+    memcpy(*item + sizeof(head), key->data, key->length);
+  memcpy(*item + sizeof(head) + key->length, value->handle.file, sizeof(*value->handle.file));
   return item_size;
 }
 
@@ -20,31 +21,40 @@ void item_to_kv(void* item, struct key** key, struct value** value) {
   if (key) {
     *key = malloc(sizeof(**key));
     (*key)->val = ((struct item_head*)item)->val;
-    (*key)->data = malloc((*key)->length + 1);
-    memcpy((*key)->data, (char*)item + sizeof(struct item_head), (*key)->length);
-    (*key)->data[(*key)->length] = '\0';
+    if ((*key)->length) {
+      (*key)->data = malloc((*key)->length + 1);
+      memcpy((*key)->data, (char*)item + sizeof(struct item_head), (*key)->length);
+      (*key)->data[(*key)->length] = '\0';
+    } else {
+      (*key)->data = NULL;
+    }
   }
   if (value) {
     *value = malloc(sizeof(**value));
-    (*value)->handle.file = (struct kfs_file*)((char*)item +
-        (sizeof(struct item_head) + ((struct item_head*)item)->length));
+    (*value)->handle.file = malloc(sizeof(*(*value)->handle.file));
+    memcpy((*value)->handle.file, ((char*)item) + sizeof(struct item_head) + ((struct item_head*)item)->length,
+        sizeof(*(*value)->handle.file));
     (*value)->handle.big_file_fd = 0;
   }
 }
 
 struct key* keydup(struct key* key) {
   struct key* new = malloc(sizeof(*new));
-  new->data = malloc(key->length + 1);
-  memcpy(new->data, key->data, key->length);
-  new->data[key->length] = '\0';
+  if (key->data) {
+    new->data = malloc(key->length + 1);
+    memcpy(new->data, key->data, key->length);
+    new->data[key->length] = '\0';
+  } else {
+    new->data = NULL;
+  }
   new->val = key->val;
   return new;
 }
 
 struct value* valuedup(struct value* value) {
   struct value* new = malloc(sizeof(*new));
-  new->handle.file = malloc(sizeof(*(new->handle.file)));
-  memcpy(new->handle.file, value->handle.file, sizeof(*(new->handle.file)));
+  new->handle.file = malloc(sizeof(*new->handle.file));
+  memcpy(new->handle.file, value->handle.file, sizeof(*new->handle.file));
   new->handle.big_file_fd = value->handle.big_file_fd;
   return new;
 }

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <string.h>
 #include <assert.h>
 #include <time.h>
@@ -50,6 +51,59 @@ static const struct fuse_opt option_spec[] = {
 
 static inline int path_is_root(const char* path) {
   return (path[0] == '/' && path[1] == '\0');
+}
+
+static struct key* path_to_key(const char* path) {
+  size_t len = strlen(path);
+  char* end = (char*)path + (len - 1);
+  while (*end != '/')
+    end--;
+
+  ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
+  if (dir_ino == -1)
+    return NULL;
+
+  struct key* key = malloc(sizeof(*key));
+  key->dir_ino = dir_ino;
+  key->length = len - (end - path) - 1;
+  key->data = malloc(key->length + 1);
+  memcpy(key->data, end + 1, key->length);
+  key->data[key->length] = '\0';
+  key->hash = file_name_hash(end + 1, key->length);
+
+  return key;
+}
+
+static struct kv_event* get_file(const char* path) {
+  struct kv_request* req = malloc(sizeof(*req));
+  memset(req, 0, sizeof(*req));
+  req->key = path_to_key(path);
+  req->type = GET;
+
+  int sequence = kv_submit(req);
+  struct kv_event* event = kv_getevent(sequence);
+  if (event->return_code != 0)
+    return event;
+
+  if ((event->value->handle.file->type & KFS_REG) ||
+      (event->value->handle.file->type & KFS_SYMLINK)) {
+
+    event->value->handle.key = req->key;
+    free(req);
+    return event;
+  }
+
+  // KFS_HARDLINK
+  req->key->data = NULL;
+  req->key->val = 0;
+  req->key->dir_ino = event->value->handle.file->stat.st_ino;
+  req->type = GET;
+
+  sequence = kv_submit(req);
+  event = kv_getevent(sequence);
+  event->value->handle.key = req->key;
+  free(req);
+  return event;
 }
 
 void* kfs_init(struct fuse_conn_info* conn, struct fuse_config* cfg) {
@@ -118,7 +172,7 @@ int kfs_mknod(const char* path, mode_t mode, dev_t dev) {
 
   ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
   assert(dir_ino >= 0);
-  struct kv_event* event = create_file(dir_ino, end + 1, mode, len - (end - path + 1));
+  struct kv_event* event = create_file(dir_ino, end + 1, mode, len - (end - path + 1), KFS_REG);
   return event->return_code;
 }
 
@@ -135,37 +189,11 @@ int kfs_create(const char* path, mode_t mode, struct fuse_file_info* fi) {
 
   ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
   assert(dir_ino >= 0);
-  struct kv_event* event = create_file(dir_ino, end + 1, mode, len - (end - path + 1));
-  if (event->return_code == 0) {
+  struct kv_event* event = create_file(dir_ino, end + 1, mode, len - (end - path + 1), KFS_REG);
+  if (event->return_code == 0)
     fi->fh = (uint64_t)&event->value->handle;
-  }
+
   return event->return_code;
-}
-
-struct kv_event* get_file(const char* path) {
-  size_t len = strlen(path);
-  char* end = (char*)path + (len - 1);
-  while (*end != '/')
-    end--;
-
-  ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
-  if (dir_ino == -1)
-    return NULL;
-
-  struct kv_request* req = malloc(sizeof(*req));
-  memset(req, 0, sizeof(*req));
-  req->key = malloc(sizeof(*req->key));
-  req->key->dir_ino = dir_ino;
-  req->key->length = len - (end - path) - 1;
-  req->key->data = malloc(req->key->length + 1);
-  memcpy(req->key->data, end + 1, req->key->length);
-  req->key->data[req->key->length] = '\0';
-  req->key->hash = file_name_hash(end + 1, req->key->length);
-  req->type = GET;
-
-  int sequence = kv_submit(req);
-  free(req);
-  return kv_getevent(sequence);
 }
 
 /*
@@ -211,39 +239,55 @@ int kfs_write(const char* path, const char* buf, size_t size, off_t offset, stru
 int kfs_unlink(const char* path) {
   print_info("unlink", path);
 
-  size_t len = strlen(path);
-  char* end = (char*)path + (len - 1);
-  while (*end != '/')
-    end--;
-
-  ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
-  if (dir_ino == -1)
-    return -ENOENT;
-
+  // get file handle
   struct kv_request* req = malloc(sizeof(*req));
   memset(req, 0, sizeof(*req));
-  req->key = malloc(sizeof(*req->key));
-  req->key->dir_ino = dir_ino;
-  req->key->length = len - (end - path) - 1;
-  req->key->data = malloc(req->key->length + 1);
-  memcpy(req->key->data, end + 1, req->key->length);
-  req->key->data[req->key->length] = '\0';
-  req->key->hash = file_name_hash(end + 1, req->key->length);
+  req->key = path_to_key(path);
   req->type = GET;
-
   int sequence = kv_submit(req);
   struct kv_event* event =  kv_getevent(sequence);
-
   if (event->return_code != 0)
     return -ENOENT;
-  
-  remove_file((struct kfs_file_handle*)event->value);
 
+  // delete file
   req->type = DELETE;
   sequence = kv_submit(req);
-  free(req);
-  event = kv_getevent(sequence);
+  kv_getevent(sequence);
 
+  // if file's type is KFS_HARDLINK, then dec inode's st_nlink,
+  // if st_nlink drops to 0, remove inode.
+  if (event->value->handle.file->type == KFS_HARDLINK) {
+    free(req->key->data);
+    req->key->data = NULL;
+    req->key->val = 0;
+    req->key->dir_ino = file_ino(&event->value->handle);
+    req->type = GET;
+    sequence = kv_submit(req);
+    free(event);
+    event = kv_getevent(sequence);
+    Assert(event->return_code == 0);
+    event->value->handle.file->stat.st_nlink -= 1;
+    if (event->value->handle.file->stat.st_nlink == 0) {
+      remove_file(&event->value->handle);
+      req->type = DELETE;
+      sequence = kv_submit(req);
+      free(event);
+      event = kv_getevent(sequence);
+      Assert(event->return_code == 0);
+    } else {
+      req->value = event->value;
+      req->type = UPDATE;
+      sequence = kv_submit(req);
+      free(event);
+      event = kv_getevent(sequence);
+      Assert(event->return_code == 0);
+    }
+  } else {
+    // KFS_REG
+    remove_file(&event->value->handle);
+  }
+  free(req->key);
+  free(req);
   return event->return_code;
 }
 
@@ -286,36 +330,23 @@ int kfs_mkdir(const char* path, mode_t mode) {
   ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
   assert(dir_ino >= 0);
   struct kv_event* event = create_file(dir_ino, end + 1, mode | S_IFDIR,
-      len - (end - path + 1));
+      len - (end - path + 1), KFS_REG);
   return event->return_code;
 }
 
 int kfs_rmdir(const char* path) {
   print_info("rmdir", path);
 
-  size_t len = strlen(path);
-  char* end = (char*)path + (len - 1);
-  while (*end != '/')
-    end--;
-
-  ino_t dir_ino = dcache_lookup(dcache, path, (end - path) + 1);
-  if (dir_ino == -1)
-    return -ENOENT;
-
   struct kv_request* req = malloc(sizeof(*req));
   memset(req, 0, sizeof(*req));
-  req->key = malloc(sizeof(*req->key));
-  req->key->dir_ino = dir_ino;
-  req->key->length = len - (end - path) - 1;
-  req->key->data = malloc(req->key->length + 1);
-  memcpy(req->key->data, end + 1, req->key->length);
-  req->key->data[req->key->length] = '\0';
-  req->key->hash = file_name_hash(end + 1, req->key->length);
+  req->key = path_to_key(path);
   req->type = DELETE;
-  int sequence = kv_submit(req);
-  free(req);
-  struct kv_event* event = kv_getevent(sequence);
 
+  int sequence = kv_submit(req);
+  free(req->key);
+  free(req);
+
+  struct kv_event* event = kv_getevent(sequence);
   return event->return_code;
 }
 
@@ -362,15 +393,17 @@ int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offse
   struct kv_request* req = malloc(sizeof(*req));
   memset(req, 0, sizeof(*req));
   req->min_key = malloc(sizeof(*req->min_key));
+  req->min_key->data = NULL;
   req->min_key->dir_ino = dir_ino;
   req->min_key->hash = 0;
   req->min_key->length = 0;
   req->max_key = malloc(sizeof(*req->max_key));
+  req->max_key->data = NULL;
   req->max_key->dir_ino = dir_ino + 1;
   req->max_key->hash = 0;
   req->max_key->length = 0;
   req->scan = readdir_scan;
-  void** scan_arg = malloc(sizeof(void*) * 3);
+  void** scan_arg = malloc(sizeof(void*) * 4);
   scan_arg[0] = (void*)filler;
   scan_arg[1] = buf;
   scan_arg[2] = malloc(sizeof(off_t));
@@ -380,9 +413,12 @@ int kfs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offse
   req->type = SCAN;
 
   int sequence = kv_submit(req);
+  free(req->min_key);
+  free(req->max_key);
   free(req);
   struct kv_event* event = kv_getevent(sequence);
   Assert(event->return_code >= 0);
+  free(scan_arg[2]);
   free(scan_arg[3]);
   free(scan_arg);
   free(event);
@@ -396,6 +432,169 @@ int kfs_releasedir(const char* path, struct fuse_file_info* fi) {
   return 0;
 }
 
+int kfs_link(const char* src, const char* dst) {
+  print_info("link dst", dst);
+  print_info("link src", src);
+
+  struct kv_request* req = malloc(sizeof(*req));
+  memset(req, 0, sizeof(*req));
+  req->key = path_to_key(src);
+  req->type = GET;
+
+  int sequence = kv_submit(req);
+  struct kv_event* event = kv_getevent(sequence);
+  if (event->return_code != 0)
+    return -ENOENT;
+  
+  struct kfs_file_handle* src_handle = &event->value->handle;
+  if (src_handle->file->type == KFS_REG) {
+    req->value = (struct value*)src_handle;
+    src_handle->file->stat.st_nlink += 1;
+    src_handle->file->type = KFS_HARDLINK;
+    req->type = UPDATE;
+
+    sequence = kv_submit(req);
+    event = kv_getevent(sequence);
+    Assert(event->return_code == 0);
+
+    free(req->key->data);
+    req->key->data = NULL;
+    req->key->val = 0;
+    req->key->dir_ino = src_handle->file->stat.st_ino;
+
+    req->type = PUT;
+
+    sequence = kv_submit(req);
+    free(req->key);
+    event = kv_getevent(sequence);
+    Assert(event->return_code == 0);
+  } else {
+    free(req->key->data);
+    free(req->key);
+  }
+
+  req->key = path_to_key(dst);
+  req->value = (struct value*)src_handle;
+  req->type = PUT;
+
+  sequence = kv_submit(req);
+  free(req->key->data);
+  free(req->key);
+  free(req);
+  event = kv_getevent(sequence);
+  Assert(event->return_code == 0);
+
+  return event->return_code;
+}
+
+int kfs_symlink(const char* src, const char* dst) {
+  print_info("symlink", src);
+  print_info("symlink", dst);
+
+  size_t len = strlen(dst);
+  char* end = (char*)dst + (len - 1);
+  while (*end != '/')
+    end--;
+
+  ino_t dir_ino = dcache_lookup(dcache, dst, (end - dst) + 1);
+  assert(dir_ino >= 0);
+  mode_t mode = S_IFLNK | S_IRWXU | S_IRWXG | S_IRWXO;
+  struct kv_event* event = create_file(dir_ino, end + 1, mode, len - (end - dst + 1), KFS_HARDLINK | KFS_SYMLINK);
+  if (event->return_code != 0)
+    return event->return_code;
+
+  struct kfs_file_handle* handle = &event->value->handle;
+  free(event);
+
+  struct kv_request* req = malloc(sizeof(*req));
+  memset(req, 0, sizeof(*req));
+  req->key = malloc(sizeof(*req->key));
+  req->key->data = NULL;
+  req->key->val = 0;
+  req->key->dir_ino = handle->file->stat.st_ino;
+  req->value = malloc(sizeof(*req->value));
+  req->value->handle.file = malloc(sizeof(*req->value->handle.file));
+  req->value->handle.file->type = KFS_SYMLINK;
+  req->type = PUT;
+
+  int src_len = strlen(src) + 1;
+  int max_node_size = sizeof(struct kfs_stat);
+  int seq = 0;
+  while (src_len > 0) {
+    req->key->hash = seq;
+    if (src_len > max_node_size) {
+      req->value->handle.file->next = 1;
+      memcpy(req->value->handle.file->blob, src, max_node_size);
+    } else {
+      req->value->handle.file->next = 0;
+      memcpy(req->value->handle.file->blob, src, src_len);
+    }
+    int sequence = kv_submit(req);
+    event = kv_getevent(sequence);
+    Assert(event->return_code == 0);
+    if (event->return_code != 0)
+      return event->return_code;
+    free(event);
+    src_len -= max_node_size;
+    src += max_node_size;
+    seq++;
+  }
+  free(req->key);
+  free(req->value->handle.file);
+  free(req->value);
+  free(req);
+  return 0;
+}
+
+int kfs_readlink(const char* path, char* buf, size_t size) {
+  print_info("readlink", path);
+  printf("readlink %lu\n", size);
+
+  struct kv_request* req = malloc(sizeof(*req));
+  memset(req, 0, sizeof(*req));
+  req->key = path_to_key(path);
+  req->type = GET;
+
+  int sequence = kv_submit(req);
+  struct kv_event* event = kv_getevent(sequence);
+  if (event->return_code != 0)
+    return -ENOENT;
+
+  free(req->key->data);
+  req->key->data = NULL;
+  req->key->val = 0;
+  req->key->dir_ino = event->value->handle.file->stat.st_ino;
+
+  int seq = 0;
+  int blob_size = sizeof(struct kfs_stat);
+  while (1) {
+    req->key->hash = seq;
+    sequence = kv_submit(req);
+    free(event);
+    event = kv_getevent(sequence);
+    Assert(event->return_code == 0);
+    Assert(event->value->handle.file->type == KFS_SYMLINK);
+    if (event->value->handle.file->next) {
+      memcpy(buf, event->value->handle.file->blob, blob_size);
+      buf += blob_size;
+      Assert(size >= blob_size);
+      size -= blob_size;
+      seq++;
+    } else {
+      memcpy(buf, event->value->handle.file->blob, blob_size);
+      buf += blob_size;
+      Assert(size >= blob_size);
+      size -= blob_size;
+      break;
+    }
+  }
+
+  free(event);
+  free(req->key);
+  free(req);
+  return 0;
+}
+
 static struct fuse_operations kfs_operations = {
   .init       = kfs_init,
   .getattr    = kfs_getattr,
@@ -406,9 +605,9 @@ static struct fuse_operations kfs_operations = {
   .rmdir      = kfs_rmdir,
   .rename     = NULL,
 
-  .link       = NULL,
-  .symlink    = NULL,
-  .readlink   = NULL,
+  .link       = kfs_link,
+  .symlink    = kfs_symlink,
+  .readlink   = kfs_readlink,
 
   .open       = kfs_open,
   .read       = kfs_read,
@@ -446,7 +645,6 @@ int main(int argc, char** argv) {
   /* Parse options */
   if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)
     return 1;
-  fuse_opt_add_arg(&args, "-s");
 
 #ifdef DEBUG
   printf("workdir: %s, datadir: %s, mountdir: %s\n", options.workdir,

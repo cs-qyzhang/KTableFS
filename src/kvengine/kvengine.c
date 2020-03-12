@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <time.h>
 #include "util/queue.h"
 #include "util/freelist.h"
 #include "util/index.h"
@@ -23,8 +24,10 @@ struct thread_data* threads_data;
 pthread_t* threads;
 int thread_nr;
 
+static struct timespec req_tm = {.tv_sec = 0, .tv_nsec = 50};
 static inline void nop() {
   for (volatile int i = 0; i < 10000; ++i) ;
+  //nanosleep(&req_tm, NULL);
 }
 
 struct kv_event* kv_event_new() {
@@ -289,7 +292,7 @@ void thread_data_init(struct thread_data* data, int thread_idx, struct kv_option
   data->kv_event_queue = queue_new(64);
   data->io_context_queue = queue_new(64);
   data->arena = arena_new();
-  data->pagecache = pagecache_new(256);
+  data->pagecache = pagecache_new(PAGECACHE_NR_PAGE);
   data->max_sequence = 0;
   data->slab = malloc(sizeof(struct slab));
   data->slab->slab_size = 256;

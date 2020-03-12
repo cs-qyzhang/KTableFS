@@ -94,6 +94,7 @@ ino_t dcache_lookup(struct dentrycache* dcache, const char* dir, size_t len) {
       return -1;
 
     struct kv_request* req = malloc(sizeof(*req));
+    memset(req, 0, sizeof(*req));
     req->key = malloc(sizeof(*req->key));
     req->key->dir_ino = parent_dir;
     req->key->length = len - (pos - dir + 1) - 1;
@@ -104,10 +105,14 @@ ino_t dcache_lookup(struct dentrycache* dcache, const char* dir, size_t len) {
     req->type = GET;
 
     int sequence = kv_submit(req);
+    free(req->key->data);
+    free(req->key);
+    free(req);
     struct kv_event* event = kv_getevent(sequence);
     Assert(event && event->return_code == 0);
 
     ino_t ino = file_ino(&event->value->handle);
+    free(event);
     index_insert(dcache->index, key, (void*)(ino + 1));
     return ino;
   }
