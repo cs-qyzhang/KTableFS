@@ -10,9 +10,8 @@ struct slab;
 struct pagecache;
 
 struct thread_data {
-  struct queue* kv_request_queue;
+  struct queue* kv_batch_queue;
   struct index* index;
-  struct queue* kv_event_queue;
   struct queue* io_context_queue;
   struct arena* arena;
   struct slab* slab;

@@ -48,6 +48,8 @@ void arena_destroy(struct arena* arena_) {
 }
 
 static void arena_alloc_block(struct arena* arena_, size_t size) {
+  // 8 byte aligned
+  size = (size + 7) & ~7;
   if (arena_->alloc_blk_idx_ == arena_->max_blocks_ - 1) {
     arena_->blocks_ = (char**)realloc(arena_->blocks_,
         (arena_->max_blocks_ + ARENA_NB_BLOCKS) * ARENA_BLOCK_SIZE);
@@ -59,6 +61,8 @@ static void arena_alloc_block(struct arena* arena_, size_t size) {
 }
 
 static void arena_alloc_block_aligned(struct arena* arena_, size_t size, size_t align) {
+  // 8 byte aligned
+  size = (size + 7) & ~7;
   if (arena_->alloc_blk_idx_ == arena_->max_blocks_ - 1) {
     arena_->blocks_ = (char**)realloc(arena_->blocks_,
         (arena_->max_blocks_ + ARENA_NB_BLOCKS) * ARENA_BLOCK_SIZE);
@@ -72,6 +76,8 @@ static void arena_alloc_block_aligned(struct arena* arena_, size_t size, size_t 
 // allocate memory in arena
 void* arena_allocate(struct arena* arena_, size_t size) {
   Assert(size > 0);
+  // 8 byte aligned
+  size = (size + 7) & ~7;
   // if size is bigger than block size's 1/4, we allocate
   // a new block to store it.
   if (size >= ARENA_BLOCK_SIZE / 4) {
@@ -101,6 +107,8 @@ void* arena_allocate(struct arena* arena_, size_t size) {
 void* arena_allocate_aligned(struct arena* arena_, size_t size, size_t align) {
   Assert(size > 0);
   Assert((align & (align - 1)) == 0);
+  // 8 byte aligned
+  size = (size + 7) & ~7;
   if (size >= ARENA_BLOCK_SIZE / 4) {
     arena_alloc_block_aligned(arena_, size, align);
     // sawp newly alloc blocks and last blocks, because last blocks

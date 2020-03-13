@@ -49,6 +49,10 @@ struct kfs_file_handle {
 
 extern struct stat* root_stat;
 
+static inline struct kfs_stat* file_stat(struct kfs_file_handle* handle) {
+  return &handle->file->stat;
+}
+
 static inline ino_t file_ino(struct kfs_file_handle* handle) {
   return handle->file->stat.st_ino;
 }

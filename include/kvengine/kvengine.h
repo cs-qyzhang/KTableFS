@@ -7,6 +7,13 @@
 struct key;
 struct value;
 
+struct kv_respond {
+  struct value* value;
+  int res;
+};
+
+typedef void (*kv_callback_t)(void** userdata, struct kv_respond* respond);
+
 struct kv_request {
   union {
     struct key* key;
@@ -14,9 +21,10 @@ struct kv_request {
   };
   struct key* max_key;
   struct value* value;
+  kv_callback_t callback;
+  void** userdata;
   scan_t scan;
   void* scan_arg;
-  size_t sequence;
   enum req_type {
     PUT,
     GET,
@@ -26,12 +34,6 @@ struct kv_request {
   } type;
 };
 
-struct kv_event {
-  struct value* value;
-  size_t sequence;
-  int return_code;
-};
-
 struct kv_options {
   char* slab_dir;
   int thread_nr;
@@ -39,15 +41,19 @@ struct kv_options {
 
 void kv_init(struct kv_options* options);
 void kv_destroy();
-struct kv_event* kv_getevent(int sequence);
-int kv_submit(struct kv_request* request);
-struct key* keydup(struct key* key);
-struct value* valuedup(struct value* value);
+void kv_submit(struct kv_request** requests, int nr);
+
+struct kv_batch;
+void kv_finish(struct kv_batch* batch, struct kv_respond* respond);
 
 // implemention dependent
-size_t kv_to_item(struct key* key, struct value* value, void** item);
-void item_to_kv(void* item, struct key** key, struct value** value);
+size_t kv_to_item(struct key* key, struct value* value, void* item);
+void item_to_value(void* item, struct value** value);
 int get_thread_index(struct key* key, int thread_nr);
 int key_comparator(void* a, void* b);
+struct key* keydup(struct key* key);
+struct value* valuedup(struct value* value);
+void keydup_free(struct key* key);
+void valuedup_free(struct value* value);
 
 #endif // KTABLEFS_KVENGINE_H_

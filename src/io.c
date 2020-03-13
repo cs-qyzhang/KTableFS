@@ -1,4 +1,6 @@
 #define _GNU_SOURCE
+#define FUSE_USE_VERSION 31
+#include <fuse3/fuse_lowlevel.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -19,7 +21,7 @@
 #include "ktablefs_config.h"
 #include "debug.h"
 
-extern struct stat* root_stat;
+extern struct options options;
 size_t datadir_path_len;
 
 pthread_mutex_t aggregation_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -33,11 +35,6 @@ char slab_buf[4]; // used to read slab file's head
 pthread_mutex_t big_file_lock = PTHREAD_MUTEX_INITIALIZER;
 uint32_t big_file_nr;
 
-pthread_mutex_t file_ino_lock = PTHREAD_MUTEX_INITIALIZER;
-ino_t max_file_ino;
-
-__thread struct kv_request req;
-
 void io_init() {
   slab_file_no = -1;
   slab_file_max_idx = AGGREGATION_SLAB_NR;
@@ -45,7 +42,6 @@ void io_init() {
   memset(slab_file_fd, 0, 1024 * sizeof(int));
   slab_file_nr = 1024;
   big_file_nr = 0;
-  max_file_ino = 1;
   datadir_path_len = strlen(options.datadir);
   aggregation_freelist = freelist_new(NULL);
 }
@@ -94,7 +90,11 @@ static void create_new_slab_file(uint32_t file_no) {
   int fd = open(path, O_RDWR | O_CREAT,0644);
   free(path);
   assert(fd > 0);
-  ftruncate(fd, AGGREGATION_HEADER_SIZE);
+  int ret;
+  ret = ftruncate(fd, AGGREGATION_HEADER_SIZE);
+  if (ret) {
+    perror(strerror(errno));
+  }
 
   if (file_no >= slab_file_nr) {
     slab_file_nr += 1024;
@@ -103,7 +103,7 @@ static void create_new_slab_file(uint32_t file_no) {
   slab_file_fd[file_no] = fd;
 }
 
-static void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
+void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
   pthread_mutex_lock(&aggregation_lock);
   // get free slab
   int* slab = freelist_get(aggregation_freelist);
@@ -122,134 +122,140 @@ static void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
     *file_idx = slab[1];
   }
 
+  ssize_t ret;
   // update slab nr
-  pread(slab_file_fd[*file_no], slab_buf, 4, 0);
+  ret = pread(slab_file_fd[*file_no], slab_buf, 4, 0);
+  assert(ret == 4);
   *((uint32_t*)slab_buf) += 1;
-  pwrite(slab_file_fd[*file_no], slab_buf, 4, 0);
+  ret = pwrite(slab_file_fd[*file_no], slab_buf, 4, 0);
+  assert(ret == 4);
 
   // update slab bitmap
   int bitmap_pos = 4 + *file_idx / 8;
-  pread(slab_file_fd[*file_no], slab_buf, 1, bitmap_pos);
+  ret = pread(slab_file_fd[*file_no], slab_buf, 1, bitmap_pos);
+  assert(ret == 1);
   slab_buf[0] = slab_buf[0] | (1U << (7 - (*file_idx % 8)));
-  pwrite(slab_file_fd[*file_no], slab_buf, 1, bitmap_pos);
+  ret = pwrite(slab_file_fd[*file_no], slab_buf, 1, bitmap_pos);
+  assert(ret == 1);
 
   pthread_mutex_unlock(&aggregation_lock);
 }
 
-struct kv_event* create_file(ino_t parent_ino, const char* file_name, mode_t mode, size_t len, uint16_t type) {
-  struct kfs_file_handle* handle = malloc(sizeof(*handle));
-  handle->big_file_fd = 0;
-
-  handle->file = malloc(sizeof(*handle->file));
-  memset(handle->file, 0, sizeof(*handle->file));
-  handle->file->type = type;
-  handle->file->stat.st_uid = root_stat->st_uid;
-  handle->file->stat.st_gid = root_stat->st_gid;
-  handle->file->stat.st_nlink = 1;
-  handle->file->stat.st_mode = mode;
-  update_atime(handle);
-  update_mtime(handle);
-  update_ctime(handle);
-  file_set_size(handle, 0);
-
-  pthread_mutex_lock(&file_ino_lock);
-  file_set_ino(handle, max_file_ino++);
-  pthread_mutex_unlock(&file_ino_lock);
-
-  if (!(mode & S_IFDIR)) {
-    allocate_aggregation_slab(&handle->file->slab_file_no,
-                              &handle->file->slab_file_idx);
-  }
-
-  memset(&req, 0, sizeof(req));
-  req.key = malloc(sizeof(req.key));
-  req.key->dir_ino = parent_ino;
-  req.key->length = len;
-  req.key->data = malloc(req.key->length + 1);
-  memcpy(req.key->data, file_name, req.key->length);
-  req.key->data[req.key->length] = '\0';
-  req.key->hash = file_name_hash(file_name, req.key->length);
-  req.value = (struct value*)handle;
-  req.type = PUT;
-
-  int sequence = kv_submit(&req);
-  struct kv_event* event = kv_getevent(sequence);
-  Assert(event->return_code == 0);
-
-  req.value = NULL;
-  req.type = GET;
-  sequence = kv_submit(&req);
-  event = kv_getevent(sequence);
-  Assert(event->return_code == 0);
-  event->value->handle.key = req.key;
-
-  return event;
+void write_callback(void** userdata, struct kv_respond* respond) {
+  fuse_req_t req = (fuse_req_t)userdata[0];
+  ssize_t count = (size_t)(uintptr_t)userdata[1];
+  if (respond->res < 0)
+    fuse_reply_err(req, -respond->res);
+  else
+    fuse_reply_write(req, count);
 }
 
-int write_file(struct kfs_file_handle* handle, void* data, size_t size, off_t offset) {
-  int ret = 0;
+void write_file(fuse_req_t req, struct kfs_file_handle* handle, const char* data, size_t size, off_t offset) {
+  ssize_t count = 0;
+  ssize_t ret = 0;
 
   if (offset + size > file_size(handle))
     file_set_size(handle, offset + size);
 
   if (offset >= AGGREGATION_SLAB_SIZE) {
     int big_file_fd = get_big_file_fd(handle);
-    ret += pwrite(big_file_fd, data, size, offset - AGGREGATION_SLAB_SIZE);
+    ret = pwrite(big_file_fd, data, size, offset - AGGREGATION_SLAB_SIZE);
+    if (ret < 0) {
+      Assert(ret == 0);
+      fuse_reply_err(req, errno);
+      return;
+    }
+    count += ret;
   } else if (offset < AGGREGATION_SLAB_SIZE && offset + size > AGGREGATION_SLAB_SIZE) {
     int slab_file_fd = get_slab_file_fd(handle);
-    ret += pwrite(slab_file_fd, data, AGGREGATION_SLAB_SIZE - offset,
+    ret = pwrite(slab_file_fd, data, AGGREGATION_SLAB_SIZE - offset,
         AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset);
+    if (ret < 0) {
+      Assert(ret == 0);
+      fuse_reply_err(req, errno);
+      return;
+    }
+    count += ret;
     size -= AGGREGATION_SLAB_SIZE - offset;
     int big_file_fd = get_big_file_fd(handle);
-    ret += pwrite(big_file_fd, data + (AGGREGATION_SLAB_SIZE - offset), size, 0);
+    ret = pwrite(big_file_fd, data + (AGGREGATION_SLAB_SIZE - offset), size, 0);
+    if (ret < 0) {
+      Assert(ret == 0);
+      fuse_reply_err(req, errno);
+      return;
+    }
+    count += ret;
   } else {
     int slab_file_fd = get_slab_file_fd(handle);
-    ret += pwrite(slab_file_fd, data, size,
+    ret = pwrite(slab_file_fd, data, size,
         AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset);
+    if (ret < 0) {
+      Assert(ret == 0);
+      fuse_reply_err(req, errno);
+      return;
+    }
+    count += ret;
   }
 
   update_mtime(handle);
   update_ctime(handle);
 
-  memset(&req, 0, sizeof(req));
-  req.key = handle->key;
-  req.value = (struct value*)handle;
-  req.type = UPDATE;
+  struct kv_request kv_req;
+  struct kv_request* req_ptr;
+  memset(&kv_req, 0, sizeof(kv_req));
+  kv_req.key = handle->key;
+  kv_req.value = (struct value*)handle;
+  kv_req.type = UPDATE;
+  kv_req.callback = write_callback;
+  kv_req.userdata = malloc(sizeof(void*) * 2);
+  kv_req.userdata[0] = (void*)req;
+  kv_req.userdata[1] = (void*)(uintptr_t)count;
 
-  int sequence = kv_submit(&req);
-  struct kv_event* event = kv_getevent(sequence);
-  Assert(event->return_code == 0);
-
-  return ret;
+  req_ptr = &kv_req;
+  kv_submit(&req_ptr, 1);
 }
 
-int read_file(struct kfs_file_handle* handle, void* data, size_t size, off_t offset) {
-  int ret = 0;
+void read_file(fuse_req_t req, struct kfs_file_handle* handle, size_t size, off_t offset) {
   if (offset >= file_size(handle)) {
-    return -EOF;
+    printf("EOF!\n");
+    fuse_reply_err(req, EOF);
+    return;
   }
-  if (offset + size >= file_size(handle)) {
+  if (offset + size >= file_size(handle))
     size = file_size(handle) - offset;
-  }
+
   if (offset >= AGGREGATION_SLAB_SIZE) {
+    // only in big file
     int big_file_fd = get_big_file_fd(handle);
-    ret += pread(big_file_fd, data, size, offset - AGGREGATION_SLAB_SIZE);
+    struct fuse_bufvec buf = FUSE_BUFVEC_INIT(size);
+    buf.buf[0].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
+    buf.buf[0].fd = big_file_fd;
+    buf.buf[0].pos = offset - AGGREGATION_SLAB_SIZE;
+    fuse_reply_data(req, &buf, FUSE_BUF_SPLICE_MOVE);
   } else if (offset < AGGREGATION_SLAB_SIZE && offset + size > AGGREGATION_SLAB_SIZE) {
     int slab_file_fd = get_slab_file_fd(handle);
-    ret += pread(slab_file_fd, data, AGGREGATION_SLAB_SIZE - offset,
-        AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset);
-    size -= AGGREGATION_SLAB_SIZE - offset;
     int big_file_fd = get_big_file_fd(handle);
-    ret += pread(big_file_fd, data + (AGGREGATION_SLAB_SIZE - offset), size, 0);
+    struct fuse_bufvec* bufvec;
+    bufvec = malloc(sizeof(*bufvec) + sizeof(struct fuse_buf));
+    bufvec->count = 2;
+    bufvec->idx = 0;
+    bufvec->off = 0;
+    bufvec->buf[0].fd = slab_file_fd;
+    bufvec->buf[0].size = AGGREGATION_SLAB_SIZE - offset;
+    bufvec->buf[0].pos = AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset;
+    bufvec->buf[1].fd = big_file_fd;
+    bufvec->buf[1].size = size - (AGGREGATION_SLAB_SIZE - offset);
+    bufvec->buf[1].pos = 0;
+    fuse_reply_data(req, bufvec, FUSE_BUF_SPLICE_MOVE);
   } else {
     int slab_file_fd = get_slab_file_fd(handle);
-    ret += pread(slab_file_fd, data, size,
-        AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset);
+    struct fuse_bufvec buf = FUSE_BUFVEC_INIT(size);
+    buf.buf[0].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
+    buf.buf[0].fd = slab_file_fd;
+    buf.buf[0].pos = AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset;
+    fuse_reply_data(req, &buf, FUSE_BUF_SPLICE_MOVE);
   }
-
   update_atime(handle);
-
-  return ret;
 }
 
 void remove_file(struct kfs_file_handle* handle) {
@@ -262,16 +268,21 @@ void remove_file(struct kfs_file_handle* handle) {
   // add free slab to freelist
   freelist_add(aggregation_freelist, slab_entry);
 
+  ssize_t ret;
   // update slab nr
-  pread(slab_file_fd[handle->file->slab_file_no], slab_buf, 4, 0);
+  ret = pread(slab_file_fd[handle->file->slab_file_no], slab_buf, 4, 0);
+  assert(ret == 4);
   *((uint32_t*)slab_buf) -= 1;
-  pwrite(slab_file_fd[handle->file->slab_file_no], slab_buf, 4, 0);
+  ret = pwrite(slab_file_fd[handle->file->slab_file_no], slab_buf, 4, 0);
+  assert(ret == 4);
 
   // update slab bitmap
   int bitmap_pos = 4 + handle->file->slab_file_idx / 8;
-  pread(slab_file_fd[handle->file->slab_file_no], slab_buf, 1, bitmap_pos);
+  ret = pread(slab_file_fd[handle->file->slab_file_no], slab_buf, 1, bitmap_pos);
+  assert(ret == 1);
   slab_buf[0] = slab_buf[0] ^ (1U << (7 - (handle->file->slab_file_idx % 8)));
-  pwrite(slab_file_fd[handle->file->slab_file_no], slab_buf, 1, bitmap_pos);
+  ret = pwrite(slab_file_fd[handle->file->slab_file_no], slab_buf, 1, bitmap_pos);
+  assert(ret == 1);
 
   pthread_mutex_unlock(&aggregation_lock);
 }

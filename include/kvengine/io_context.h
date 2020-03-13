@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <linux/aio_abi.h>
 #include <assert.h>
+#include "kvengine/kvengine.h"
 
 typedef void (*callback_t)(struct io_context*);
 
@@ -14,6 +15,9 @@ struct pagecache;
 struct thread_data;
 
 struct io_context {
+  struct kv_respond respond;
+  struct kv_batch* batch;
+
   // aio control blocks
   struct iocb* iocb;
   // aio return events
@@ -23,9 +27,6 @@ struct io_context {
   struct lru_entry* lru;
   size_t page_offset;
   size_t slab_index;
-
-  struct kv_request* kv_request;
-  struct kv_event* kv_event;
 
   // functions called between io_submit() and io_getevent()
   // like string, NULL means end

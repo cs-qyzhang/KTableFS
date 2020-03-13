@@ -94,7 +94,6 @@ void pagecache_insert_index(struct io_context* ctx) {
   lru_update_(ctx->thread_data->pagecache, ctx->lru);
 }
 
-void kv_event_enqueue(struct kv_event* event, struct thread_data* thread_data);
 void io_context_enqueue(struct io_context* ctx);
 
 void* page_read_sync(struct pagecache* pgcache, hash_t hash, size_t page_offset) {
@@ -110,20 +109,22 @@ void* page_read_sync(struct pagecache* pgcache, hash_t hash, size_t page_offset)
     int page_index;
     get_page_from_hash(hash, &fd, &page_index);
 
-    pread(fd, lru->page, PAGE_SIZE, PAGE_SIZE * page_index);
+    ssize_t ret = pread(fd, lru->page, PAGE_SIZE, PAGE_SIZE * page_index);
+    assert(ret == PAGE_SIZE);
   }
   lru_update_(pgcache, lru);
   return &lru->page[page_offset];
 }
 
-void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, struct io_context* ctx) {
+void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset,
+               struct io_context* ctx) {
   struct lru_entry* lru;
   lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
   if (lru) {
     void* item = &lru->page[page_offset];
-    item_to_kv(item, NULL, &ctx->kv_event->value);
-    ctx->kv_event->return_code = 0;
-    kv_event_enqueue(ctx->kv_event, ctx->thread_data);
+    item_to_value(item, &ctx->respond.value);
+    ctx->respond.res = 0;
+    kv_finish(ctx->batch, &ctx->respond);
     lru_update_(pgcache, lru);
   } else {
     lru = pagecache_find_free_page_(pgcache);
@@ -150,7 +151,8 @@ void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset, struc
 
 // callback function
 void pagecache_write(struct io_context* ctx) {
-  memcpy(&ctx->lru->page[ctx->page_offset], (void*)(uintptr_t)ctx->iocb->aio_buf, ctx->iocb->aio_nbytes);
+  memcpy(&ctx->lru->page[ctx->page_offset], (void*)(uintptr_t)ctx->iocb->aio_buf,
+         ctx->iocb->aio_nbytes);
 }
 
 /*
@@ -158,7 +160,9 @@ void pagecache_write(struct io_context* ctx) {
  * if page already in page cache, need to update data in page cache
  * if page doesn't in page cache, directly write to disk.
  */
-void page_write(struct pagecache* pgcache, hash_t hash, size_t page_offset, void* data, size_t size, struct io_context* ctx) {
+void page_write(struct pagecache* pgcache, hash_t hash, size_t page_offset,
+                void* data, size_t size, struct io_context* ctx) {
+
   struct lru_entry* lru;
   lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
   if (lru) {

@@ -16,10 +16,10 @@ set(AGGREGATION_SLAB_SIZE "(1024 * 16)")
 set(AGGREGATION_SLAB_NR 4096)
 set(AGGREGATION_HEADER_SIZE 4096)  # (4+((AGGREGATION_SLAB_NR+7)/8)+BLOCK_SIZE-1)/BLOCK_SIZE*BLOCK_SIZE
 
-set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS "-Wall")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG -g")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
@@ -57,23 +57,23 @@ test_unit(queue util/queue)
 target_link_libraries(queue_test pthread)
 test_unit(btree util/index/btree/btree util/arena)
 
-add_executable(kvengine_test)
-target_sources(kvengine_test
-  PRIVATE
-    "${PROJECT_SOURCE_DIR}/test/kvengine/kvengine_test.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
-    "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
-    "${PROJECT_SOURCE_DIR}/util/hash.c"
-    "${PROJECT_SOURCE_DIR}/util/freelist.c"
-    "${PROJECT_SOURCE_DIR}/util/queue.c"
-    "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
-    "${PROJECT_SOURCE_DIR}/util/arena.c"
-)
-target_link_libraries(kvengine_test pthread)
-add_test(kvengine_test kvengine_test)
+# add_executable(kvengine_test)
+# target_sources(kvengine_test
+#   PRIVATE
+#     "${PROJECT_SOURCE_DIR}/test/kvengine/kvengine_test.c"
+#     "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
+#     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
+#     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
+#     "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
+#     "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
+#     "${PROJECT_SOURCE_DIR}/util/hash.c"
+#     "${PROJECT_SOURCE_DIR}/util/freelist.c"
+#     "${PROJECT_SOURCE_DIR}/util/queue.c"
+#     "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
+#     "${PROJECT_SOURCE_DIR}/util/arena.c"
+# )
+# target_link_libraries(kvengine_test pthread)
+# add_test(kvengine_test kvengine_test)
 
 add_executable(aio_test "${PROJECT_SOURCE_DIR}/test/kvengine/aio_test.c")
 add_test(aio_test aio_test)
@@ -82,24 +82,43 @@ add_executable(fuse_test "${PROJECT_SOURCE_DIR}/test/fuse_test.c")
 target_link_libraries(fuse_test fuse3)
 #add_test(fuse_test fuse_test)
 
-add_executable(ktablefs)
-target_sources(ktablefs
+# add_executable(ktablefs)
+# target_sources(ktablefs
+#   PRIVATE
+#     "${PROJECT_SOURCE_DIR}/src/dcache.c"
+#     "${PROJECT_SOURCE_DIR}/src/io.c"
+#     "${PROJECT_SOURCE_DIR}/src/ktablefs.c"
+#     "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
+#     "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
+#     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
+#     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
+#     "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
+#     "${PROJECT_SOURCE_DIR}/util/hash.c"
+#     "${PROJECT_SOURCE_DIR}/util/freelist.c"
+#     "${PROJECT_SOURCE_DIR}/util/queue.c"
+#     "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
+#     "${PROJECT_SOURCE_DIR}/util/arena.c"
+# )
+# target_link_libraries(ktablefs pthread fuse3)
+
+add_executable(ktablefs_ll)
+target_sources(ktablefs_ll
   PRIVATE
-    "${PROJECT_SOURCE_DIR}/src/dcache.c"
     "${PROJECT_SOURCE_DIR}/src/io.c"
-    "${PROJECT_SOURCE_DIR}/src/ktablefs.c"
+    "${PROJECT_SOURCE_DIR}/src/ktablefs_ll.c"
     "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
+    "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
     "${PROJECT_SOURCE_DIR}/util/hash.c"
+    "${PROJECT_SOURCE_DIR}/util/arena.c"
     "${PROJECT_SOURCE_DIR}/util/freelist.c"
     "${PROJECT_SOURCE_DIR}/util/queue.c"
-    "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
-    "${PROJECT_SOURCE_DIR}/util/arena.c"
+    "${PROJECT_SOURCE_DIR}/util/memslab.c"
 )
-target_link_libraries(ktablefs pthread fuse3)
+target_link_libraries(ktablefs_ll pthread fuse3)
 
 add_executable(ext4-fuse)
 target_sources(ext4-fuse
