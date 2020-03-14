@@ -20,7 +20,7 @@ int struct_key_comparator(void* a, void* b) {
   }
 }
 
-void tree_scan(void* key, void* value, void* data) {
+void tree_scan(void* key, void* value, void** data) {
   *(int*)data += *(int*)value;
 }
 

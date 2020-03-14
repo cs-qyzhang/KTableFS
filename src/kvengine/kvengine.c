@@ -179,9 +179,9 @@ void process_delete_request(struct kv_batch* batch, struct thread_data* thread_d
   slab_write_item(thread_data->slab, slab_idx, &item_valid, sizeof(item_valid), ctx);
 }
 
-void scan_request_function(void* key, void* value, void* scan_arg) {
-  struct kv_request* req = ((void**)scan_arg)[0];
-  struct thread_data* thread_data = ((void**)scan_arg)[1];
+void scan_request_function(void* key, void* value, void** scan_arg) {
+  struct kv_request* req = scan_arg[0];
+  struct thread_data* thread_data = scan_arg[1];
   int slab_idx = (int)(uintptr_t)value - 1;
 
   void* item = slab_read_item_sync(thread_data->slab, slab_idx);

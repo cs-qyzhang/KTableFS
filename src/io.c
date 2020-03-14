@@ -240,9 +240,11 @@ void read_file(fuse_req_t req, struct kfs_file_handle* handle, size_t size, off_
     bufvec->count = 2;
     bufvec->idx = 0;
     bufvec->off = 0;
+    bufvec->buf[0].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
     bufvec->buf[0].fd = slab_file_fd;
     bufvec->buf[0].size = AGGREGATION_SLAB_SIZE - offset;
     bufvec->buf[0].pos = AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset;
+    bufvec->buf[1].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
     bufvec->buf[1].fd = big_file_fd;
     bufvec->buf[1].size = size - (AGGREGATION_SLAB_SIZE - offset);
     bufvec->buf[1].pos = 0;

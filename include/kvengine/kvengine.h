@@ -24,7 +24,7 @@ struct kv_request {
   kv_callback_t callback;
   void** userdata;
   scan_t scan;
-  void* scan_arg;
+  void** scan_arg;
   enum req_type {
     PUT,
     GET,

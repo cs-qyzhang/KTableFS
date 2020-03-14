@@ -39,7 +39,8 @@ static void print_info(const char* func) {
   char buf[256];
   int len = sprintf(buf, "%s pid: %d, tid: %d\n", func, getpid(), gettid());
   lseek(fd, 0, SEEK_END);
-  write(fd, buf, len);
+  int ret = write(fd, buf, len);
+  assert(ret == len);
   close(fd);
 }
 
@@ -148,7 +149,8 @@ int main(int argc, char** argv) {
   int fd = open("fuse.txt", O_CREAT | O_WRONLY | O_TRUNC, 0666);
   char buf[256];
   int len = sprintf(buf, "main pid: %d, tid: %d\n", getpid(), gettid());
-  pwrite(fd, buf, len, 0);
+  int ret = pwrite(fd, buf, len, 0);
+  assert(ret == len);
   close(fd);
 
   /*
@@ -162,14 +164,14 @@ int main(int argc, char** argv) {
   /* Parse options */
   if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)
     return 1;
-  
+
   if (options.show_help) {
     show_help(argv[0]);
     assert(fuse_opt_add_arg(&args, "--help") == 0);
     args.argv[0][0] = '\0';
   }
 
-  int ret = fuse_main(args.argc, args.argv, &hello_oper, NULL);
+  ret = fuse_main(args.argc, args.argv, &hello_oper, NULL);
   fuse_opt_free_args(&args);
   return ret;
 }

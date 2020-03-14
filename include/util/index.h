@@ -2,7 +2,7 @@
 #define KTABLEFS_UTIL_INDEX_H_
 
 typedef int (*key_cmp_t)(void* key1, void* key2);
-typedef void (*scan_t)(void* key, void* value, void* scan_arg);
+typedef void (*scan_t)(void* key, void* value, void** scan_arg);
 
 struct index;
 
