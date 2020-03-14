@@ -42,7 +42,9 @@ static inline void nop() {
 }
 
 void io_context_enqueue(struct io_context* ctx) {
+  pthread_mutex_lock(&ctx->thread_data->thread_lock);
   enqueue(ctx->thread_data->io_context_queue, ctx);
+  pthread_mutex_unlock(&ctx->thread_data->thread_lock);
 }
 
 // callback function
@@ -291,6 +293,7 @@ void* worker_thread_main(void* arg) {
 }
 
 void thread_data_init(struct thread_data* data, int thread_idx, struct kv_options* option) {
+  pthread_mutex_init(&data->thread_lock, NULL);
   data->kv_batch_queue = queue_new(64);
   data->index = index_new(key_comparator);
   data->io_context_queue = queue_new(64);
@@ -350,10 +353,10 @@ static __thread struct memslab request_memslab = {
   .freelist  = NULL,
   .slab_size=sizeof(struct kv_request)};
 
-void kv_submit(struct kv_request** reqs, int nr) {
+void kv_submit(struct kv_request* reqs, int nr) {
   assert(nr <= KV_BATCH_MAX && nr > 0);
 
-  int thread_idx = get_thread_index(reqs[0]->key, thread_nr);
+  int thread_idx = get_thread_index(reqs[0].key, thread_nr);
 
   struct kv_batch* batch = memslab_alloc(&batch_memslab);
   batch->cur = 0;
@@ -361,16 +364,18 @@ void kv_submit(struct kv_request** reqs, int nr) {
 
   for (int i = 0; i < nr; ++i) {
     batch->requests[i] = memslab_alloc(&request_memslab);
-    memcpy(batch->requests[i], reqs[i], sizeof(struct kv_request));
-    if (reqs[i]->key)
-      batch->requests[i]->key = keydup(reqs[i]->key);
-    if (reqs[i]->value)
-      batch->requests[i]->value = valuedup(reqs[i]->value);
-    if (reqs[i]->max_key)
-      batch->requests[i]->max_key = keydup(reqs[i]->max_key);
+    memcpy(batch->requests[i], &reqs[i], sizeof(struct kv_request));
+    if (reqs[i].key)
+      batch->requests[i]->key = keydup(reqs[i].key);
+    if (reqs[i].value)
+      batch->requests[i]->value = valuedup(reqs[i].value);
+    if (reqs[i].max_key)
+      batch->requests[i]->max_key = keydup(reqs[i].max_key);
   }
 
+  pthread_mutex_lock(&threads_data[thread_idx].thread_lock);
   enqueue(threads_data[thread_idx].kv_batch_queue, batch);
+  pthread_mutex_unlock(&threads_data[thread_idx].thread_lock);
 }
 
 void kv_finish(struct kv_batch* batch, struct kv_respond* respond) {
@@ -389,7 +394,9 @@ void kv_finish(struct kv_batch* batch, struct kv_respond* respond) {
 
   if (++batch->cur < batch->nr) {
     int thread_idx = get_thread_index(batch->requests[batch->cur]->key, thread_nr);
+    pthread_mutex_lock(&threads_data[thread_idx].thread_lock);
     enqueue(threads_data[thread_idx].kv_batch_queue, batch);
+    pthread_mutex_unlock(&threads_data[thread_idx].thread_lock);
   } else {
     memslab_free(&batch_memslab, batch);
   }

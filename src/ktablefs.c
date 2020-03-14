@@ -449,7 +449,7 @@ int kfs_link(const char* src, const char* dst) {
   struct kv_event* event = kv_getevent(sequence);
   if (event->return_code != 0)
     return -ENOENT;
-  
+
   struct kfs_file_handle* src_handle = &event->value->handle;
   if (src_handle->file->type == KFS_REG) {
     req->value = (struct value*)src_handle;

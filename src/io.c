@@ -201,7 +201,6 @@ void write_file(fuse_req_t req, struct kfs_file_handle* handle, const char* data
   update_ctime(handle);
 
   struct kv_request kv_req;
-  struct kv_request* req_ptr;
   memset(&kv_req, 0, sizeof(kv_req));
   kv_req.key = handle->key;
   kv_req.value = (struct value*)handle;
@@ -211,8 +210,7 @@ void write_file(fuse_req_t req, struct kfs_file_handle* handle, const char* data
   kv_req.userdata[0] = (void*)req;
   kv_req.userdata[1] = (void*)(uintptr_t)count;
 
-  req_ptr = &kv_req;
-  kv_submit(&req_ptr, 1);
+  kv_submit(&kv_req, 1);
 }
 
 void read_file(fuse_req_t req, struct kfs_file_handle* handle, size_t size, off_t offset) {

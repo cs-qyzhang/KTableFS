@@ -41,7 +41,7 @@ struct kv_options {
 
 void kv_init(struct kv_options* options);
 void kv_destroy();
-void kv_submit(struct kv_request** requests, int nr);
+void kv_submit(struct kv_request* requests, int nr);
 
 struct kv_batch;
 void kv_finish(struct kv_batch* batch, struct kv_respond* respond);

@@ -185,8 +185,7 @@ void kfs_lo_lookup(fuse_req_t req, fuse_ino_t parent, const char* name) {
   kv_req.callback = lookup_callback;
   kv_req.userdata = (void*)req;
 
-  struct kv_request* req_ptr = &kv_req;
-  kv_submit(&req_ptr, 1);
+  kv_submit(&kv_req, 1);
 }
 
 /**
@@ -294,7 +293,6 @@ void kfs_lo_create(fuse_req_t req, fuse_ino_t parent, const char* name,
 
   // PUT file info
   struct kv_request kv_req[2];
-  struct kv_request* req_ptr[2];
   struct key key;
   char buf[512];
 
@@ -319,10 +317,18 @@ void kfs_lo_create(fuse_req_t req, fuse_ino_t parent, const char* name,
   userdata[1] = fi;
   kv_req[1].userdata = userdata;
 
-  req_ptr[0] = &kv_req[0];
-  req_ptr[1] = &kv_req[1];
+  kv_submit(kv_req, 2);
+}
 
-  kv_submit(req_ptr, 2);
+void open_hardlink_callback(void** userdata, struct kv_respond* respond) {
+  fuse_req_t req = (fuse_req_t)userdata[0];
+  struct fuse_file_info* fi = userdata[1];
+  if (respond->res < 0)
+    fuse_reply_err(req, -respond->res);
+  else {
+    fi->fh = (uintptr_t)&respond->value->handle;
+    fuse_reply_open(req, fi);
+  }
 }
 
 /**
@@ -337,8 +343,25 @@ void kfs_lo_create(fuse_req_t req, fuse_ino_t parent, const char* name,
 void kfs_lo_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info* fi) {
   print_info("open", "");
 
-  fi->fh = ino;
-  fuse_reply_open(req, fi);
+  struct kfs_file_handle* handle = kfs_file_handle(req, ino);
+  if ((handle->file->type & KFS_REG) || (handle->file->type & KFS_SYMLINK)) {
+    fi->fh = (uintptr_t)handle;
+    fuse_reply_open(req, fi);
+  } else if (handle->file->type & KFS_HARDLINK) {
+    struct kv_request kv_req;
+    struct key key;
+    key.data = NULL;
+    key.val = 0;
+    key.dir_ino = file_ino(handle);
+    memset(&kv_req, 0, sizeof(kv_req));
+    kv_req.key = &key;
+    kv_req.type = GET;
+    kv_req.callback = open_hardlink_callback;
+    kv_req.userdata = malloc(sizeof(void*) * 2);
+    kv_req.userdata[0] = (void*)req;
+    kv_req.userdata[1] = fi;
+    kv_submit(&kv_req, 1);
+  }
 }
 
 /**
@@ -418,7 +441,7 @@ void kfs_lo_write(fuse_req_t req, fuse_ino_t ino, const char* buf,
  * @param name to create
  * @param mode with which to create the new file
  */
-void kfs_lo_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
+void kfs_lo_mkdir(fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mode) {
   print_info("mkdir", name);
 
   struct kfs_file_handle handle;
@@ -464,10 +487,7 @@ void kfs_lo_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mo
   kv_req[1].callback = lookup_callback;
   kv_req[1].userdata = (void*)req;
 
-  struct kv_request* req_ptr[2];
-  req_ptr[0] = &kv_req[0];
-  req_ptr[1] = &kv_req[1];
-  kv_submit(req_ptr, 2);
+  kv_submit(kv_req, 2);
 }
 
 /**
@@ -491,10 +511,10 @@ void kfs_lo_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mo
  * @param ino the inode number
  * @param fi file information
  */
-void kfs_lo_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+void kfs_lo_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info* fi) {
   print_info("opendir", kfs_file_handle(req, ino)->key->data);
 
-  fi->fh = kfs_file_handle(req, ino);
+  fi->fh = (uintptr_t)kfs_file_handle(req, ino);
   fuse_reply_open(req, fi);
 }
 
@@ -601,9 +621,7 @@ void kfs_do_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, int 
   kv_req.callback = readdir_callback;
   kv_req.userdata = kv_req.scan_arg;
 
-  struct kv_request* req_ptr;
-  req_ptr = &kv_req;
-  kv_submit(&req_ptr, 1);
+  kv_submit(&kv_req, 1);
 }
 
 /**
@@ -634,7 +652,7 @@ void kfs_do_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, int 
  * @param fi file information
  */
 void kfs_lo_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
-                    struct fuse_file_info *fi) {
+                    struct fuse_file_info* fi) {
   print_info("readdir", ((struct kfs_file_handle*)(uintptr_t)fi->fh)->key->data);
   kfs_do_readdir(req, ino, size, off, 0);
 }
@@ -665,7 +683,7 @@ void kfs_lo_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
  * @param fi file information
  */
 void kfs_lo_readdirplus(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
-                        struct fuse_file_info *fi) {
+                        struct fuse_file_info* fi) {
   print_info("readdirplus", ((struct kfs_file_handle*)(uintptr_t)fi->fh)->key->data);
   kfs_do_readdir(req, ino, size, off, 1);
 }
@@ -695,8 +713,226 @@ void kfs_lo_readdirplus(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
  * @param fi file information
  */
 void kfs_lo_release(fuse_req_t req, fuse_ino_t ino,
-                    struct fuse_file_info *fi) {
+                    struct fuse_file_info* fi) {
   print_info("release", "");
+}
+
+/**
+ * Create a hard link
+ *
+ * Valid replies:
+ *   fuse_reply_entry
+ *   fuse_reply_err
+ *
+ * @param req request handle
+ * @param ino the old inode number
+ * @param newparent inode number of the new parent directory
+ * @param newname new name to create
+ */
+void kfs_lo_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent,
+                 const char* newname) {
+  print_info("link", newname);
+
+  int req_cnt = 0;
+  struct kv_request kv_req[4];
+  struct key key1, key2;
+  struct kfs_file_handle* src_handle = kfs_file_handle(req, ino);
+  if (src_handle->file->type == KFS_REG) {
+    src_handle->file->stat.st_nlink += 1;
+    src_handle->file->type = KFS_HARDLINK;
+
+    memset(&kv_req[0], 0, sizeof(kv_req[0]));
+    kv_req[0].key = src_handle->key;
+    kv_req[0].value = (struct value*)src_handle;
+    kv_req[0].type = UPDATE;
+
+    key2.data = NULL;
+    key2.val = 0;
+    key2.dir_ino = src_handle->file->stat.st_ino;
+    memset(&kv_req[1], 0, sizeof(kv_req[1]));
+    kv_req[1].key = &key2;
+    kv_req[1].value = (struct value*)src_handle;
+    kv_req[1].type = PUT;
+
+    kv_submit(kv_req, 2);
+    req_cnt += 2;
+  }
+
+  key1.dir_ino = kfs_file_handle(req, newparent)->file->stat.st_ino;
+  key1.length = strlen(newname);
+  key1.hash = file_name_hash(newname, key1.length);
+  key1.data = (char*)newname;
+  memset(&kv_req[req_cnt], 0, sizeof(kv_req[req_cnt]));
+  kv_req[req_cnt].key = &key1;
+  kv_req[req_cnt].value = (struct value*)src_handle;
+  kv_req[req_cnt].type = PUT;
+  req_cnt++;
+
+  memset(&kv_req[req_cnt], 0, sizeof(kv_req[req_cnt]));
+  kv_req[req_cnt].key = &key1;
+  kv_req[req_cnt].type = GET;
+  kv_req[req_cnt].callback = lookup_callback;
+  kv_req[req_cnt].userdata = (void**)req;
+  req_cnt++;
+
+  kv_submit(kv_req, req_cnt);
+}
+
+/**
+ * Create a symbolic link
+ *
+ * Valid replies:
+ *   fuse_reply_entry
+ *   fuse_reply_err
+ *
+ * @param req request handle
+ * @param link the contents of the symbolic link
+ * @param parent inode number of the parent directory
+ * @param name to create
+ */
+void kfs_lo_symlink(fuse_req_t req, const char* link, fuse_ino_t parent,
+                    const char* name) {
+  print_info("symlink name", name);
+  print_info("symlink link", link);
+
+  struct kfs_file_handle handle;
+  struct kfs_file file;
+  handle.big_file_fd = 0;
+  handle.file = &file;
+
+  memset(&file, 0, sizeof(file));
+  file.type = KFS_HARDLINK | KFS_SYMLINK;
+  file.stat.st_uid = root_stat->st_uid;
+  file.stat.st_gid = root_stat->st_gid;
+  file.stat.st_nlink = 1;
+  file.stat.st_mode = S_IFLNK | S_IRWXU | S_IRWXG | S_IRWXO;
+  update_atime(&handle);
+  update_mtime(&handle);
+  update_ctime(&handle);
+  file_set_size(&handle, 0);
+
+  pthread_mutex_lock(&file_ino_lock);
+  file_set_ino(&handle, ++max_file_ino);
+  pthread_mutex_unlock(&file_ino_lock);
+
+  // PUT file info
+  struct kv_request kv_req[64];
+  struct key key[64];
+  struct kfs_file_handle new_handle[64];
+  struct kfs_file new_file[64];
+
+  key[0].dir_ino = dir_ino(req, parent);
+  key[0].length = strlen(name);
+  key[0].data = (char*)name;
+  key[0].hash = file_name_hash(name, key[0].length);
+
+  memset(&kv_req[0], 0, sizeof(kv_req[0]));
+  kv_req[0].type = PUT;
+  kv_req[0].key = &key[0];
+  kv_req[0].value = (struct value*)&handle;
+
+  int src_len = strlen(link) + 1;
+  int max_node_size = sizeof(struct kfs_stat);
+  int seq = 1;
+  while (src_len > 0) {
+    key[seq].data = NULL;
+    key[seq].val = 0;
+    key[seq].dir_ino = file_ino(&handle);
+    key[seq].hash = seq - 1;
+
+    new_file[seq].type = KFS_SYMLINK;
+    if (src_len > max_node_size) {
+      new_file[seq].next = 1;
+      memcpy(new_file[seq].blob, link, max_node_size);
+    } else {
+      new_file[seq].next = 0;
+      memcpy(new_file[seq].blob, link, src_len);
+    }
+
+    new_handle[seq].file = &new_file[seq];
+    memset(&kv_req[seq], 0, sizeof(kv_req[seq]));
+    kv_req[seq].key = &key[seq];
+    kv_req[seq].value = (struct value*)&new_handle[seq];
+    kv_req[seq].type = PUT;
+
+    src_len -= max_node_size;
+    link += max_node_size;
+    seq++;
+  }
+
+  memset(&kv_req[seq], 0, sizeof(kv_req[seq]));
+  kv_req[seq].type = GET;
+  kv_req[seq].key = &key[0];
+  kv_req[seq].callback = lookup_callback;
+  kv_req[seq].userdata = (void**)req;
+  seq++;
+
+  kv_submit(kv_req, seq);
+}
+
+void readlink_callback(void** userdata, struct kv_respond* respond) {
+  fuse_req_t req = (fuse_req_t)userdata[0];
+#define buf      userdata[1]
+#define buf_head userdata[2]
+  int blob_size = sizeof(struct kfs_stat);
+  if (respond->res < 0)
+    fuse_reply_err(req, -respond->res);
+  else {
+    struct kfs_file_handle* handle = &respond->value->handle;
+    assert(handle->file->type & KFS_SYMLINK);
+    if (handle->file->next) {
+      printf("readlink next");
+      memcpy(buf, handle->file->blob, blob_size);
+      buf = (char*)buf + blob_size;
+      struct kv_request kv_req;
+      memset(&kv_req, 0, sizeof(kv_req));
+      kv_req.key = handle->key;
+      kv_req.key->hash += 1;
+      kv_req.type = GET;
+      kv_req.callback = readlink_callback;
+      kv_req.userdata = userdata;
+      kv_submit(&kv_req, 1);
+    } else {
+      memcpy(buf, handle->file->blob, blob_size);
+      fuse_reply_readlink(req, buf_head);
+    }
+  }
+#undef buf
+#undef buf_head
+}
+
+/**
+ * Read symbolic link
+ *
+ * Valid replies:
+ *   fuse_reply_readlink
+ *   fuse_reply_err
+ *
+ * @param req request handle
+ * @param ino the inode number
+ */
+void kfs_lo_readlink(fuse_req_t req, fuse_ino_t ino) {
+  print_info("readlink", "");
+
+  struct kfs_file_handle* handle = kfs_file_handle(req, ino);
+
+  struct kv_request kv_req;
+  struct key key;
+
+  key.data = NULL;
+  key.val = 0;
+  key.dir_ino = file_ino(handle);
+  key.hash = 0;
+
+  memset(&kv_req, 0, sizeof(kv_req));
+  kv_req.key = &key;
+  kv_req.type = GET;
+  kv_req.callback = readlink_callback;
+  kv_req.userdata = malloc(sizeof(void*) * 3);
+  kv_req.userdata[0] = (void*)req;
+  kv_req.userdata[1] = malloc(4097);        // buf
+  kv_req.userdata[2] = kv_req.userdata[1];  // buf head
+  kv_submit(&kv_req, 1);
 }
 
 static const struct fuse_lowlevel_ops lo_oper = {
@@ -713,12 +949,12 @@ static const struct fuse_lowlevel_ops lo_oper = {
   .open        = kfs_lo_open,
   .read        = kfs_lo_read,
   .write       = kfs_lo_write,
-  .release     = kfs_lo_release,
+  .release     = NULL,
 
-  .link        = NULL,
+  .link        = kfs_lo_link,
   .unlink      = NULL,
-  .symlink     = NULL,
-  .readlink    = NULL,
+  .symlink     = kfs_lo_symlink,
+  .readlink    = kfs_lo_readlink,
 
   .mkdir       = kfs_lo_mkdir,
   .opendir     = kfs_lo_opendir,
