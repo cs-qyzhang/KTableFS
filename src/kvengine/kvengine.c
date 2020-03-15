@@ -34,11 +34,10 @@ struct thread_data* threads_data;
 pthread_t* threads;
 int thread_nr;
 
-
 static inline void nop() {
-  for (volatile int i = 0; i < 10000; ++i) ;
-  //static struct timespec req_tm = {.tv_sec = 0, .tv_nsec = 50};
-  //nanosleep(&req_tm, NULL);
+  //for (volatile int i = 0; i < 10000; ++i) ;
+  static struct timespec req_tm = {.tv_sec = 0, .tv_nsec = 100};
+  nanosleep(&req_tm, NULL);
 }
 
 void io_context_enqueue(struct io_context* ctx) {
@@ -195,6 +194,7 @@ void scan_request_function(void* key, void* value, void** scan_arg) {
 
 void process_scan_request(struct kv_batch* batch, struct thread_data* thread_data) {
   struct kv_request* req = batch->requests[batch->cur];
+
   void** scan_arg = malloc(sizeof(void*) * 2);
   scan_arg[0] = req;
   scan_arg[1] = thread_data;
@@ -205,8 +205,8 @@ void process_scan_request(struct kv_batch* batch, struct thread_data* thread_dat
   respond->res = scan_nr;
   respond->value = NULL;
   kv_finish(batch, respond);
-  free(scan_arg);
   free(respond);
+  free(scan_arg);
 }
 
 int worker_deque_request(struct thread_data* thread_data) {
@@ -307,7 +307,7 @@ void thread_data_init(struct thread_data* data, int thread_idx, struct kv_option
   data->slab->arena = data->arena;
   data->slab->pgcache = data->pagecache;
   data->slab->freelist = freelist_new(data->arena);
-  char slab_file_name[512];
+  char slab_file_name[1024];
   sprintf(slab_file_name, "%s/slab-%d", option->slab_dir, thread_idx);
   data->slab->fd = open(slab_file_name, O_CREAT | O_RDWR, 0644);
   if (data->slab->fd == -1) {

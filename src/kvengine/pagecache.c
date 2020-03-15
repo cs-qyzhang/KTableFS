@@ -110,7 +110,7 @@ void* page_read_sync(struct pagecache* pgcache, hash_t hash, size_t page_offset)
     get_page_from_hash(hash, &fd, &page_index);
 
     ssize_t ret = pread(fd, lru->page, PAGE_SIZE, PAGE_SIZE * page_index);
-    assert(ret == PAGE_SIZE);
+    assert(ret != -1);
   }
   lru_update_(pgcache, lru);
   return &lru->page[page_offset];

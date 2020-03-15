@@ -38,7 +38,7 @@ uint32_t big_file_nr;
 void io_init() {
   slab_file_no = -1;
   slab_file_max_idx = AGGREGATION_SLAB_NR;
-  slab_file_fd = malloc(1024 * sizeof(*slab_file_fd));
+  slab_file_fd = malloc(1024 * sizeof(int));
   memset(slab_file_fd, 0, 1024 * sizeof(int));
   slab_file_nr = 1024;
   big_file_nr = 0;
@@ -143,7 +143,7 @@ void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
 
 void write_callback(void** userdata, struct kv_respond* respond) {
   fuse_req_t req = (fuse_req_t)userdata[0];
-  ssize_t count = (size_t)(uintptr_t)userdata[1];
+  ssize_t count = (uintptr_t)userdata[1];
   if (respond->res < 0)
     fuse_reply_err(req, -respond->res);
   else
@@ -213,11 +213,85 @@ void write_file(fuse_req_t req, struct kfs_file_handle* handle, const char* data
   kv_submit(&kv_req, 1);
 }
 
+void write_file_buf(fuse_req_t req, struct kfs_file_handle* handle, struct fuse_bufvec* in_buf, off_t offset) {
+  ssize_t ret;
+
+  size_t size = fuse_buf_size(in_buf);
+  if (offset + size > file_size(handle))
+    file_set_size(handle, offset + size);
+
+  if (offset >= AGGREGATION_SLAB_SIZE) {
+    // only in big file
+    int big_file_fd = get_big_file_fd(handle);
+
+    struct fuse_bufvec out_buf = FUSE_BUFVEC_INIT(size);
+    out_buf.buf[0].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
+    out_buf.buf[0].fd = big_file_fd;
+    out_buf.buf[0].pos = offset - AGGREGATION_SLAB_SIZE;
+    ret = fuse_buf_copy(&out_buf, in_buf, 0);
+    if(ret < 0) {
+      perror(strerror(errno));
+      Assert(0);
+      fuse_reply_err(req, -ret);
+      return;
+    }
+  } else if (offset < AGGREGATION_SLAB_SIZE && offset + size > AGGREGATION_SLAB_SIZE) {
+    int slab_file_fd = get_slab_file_fd(handle);
+    int big_file_fd = get_big_file_fd(handle);
+    struct fuse_bufvec* out_buf;
+    out_buf = malloc(sizeof(*out_buf) + sizeof(struct fuse_buf));
+    out_buf->count = 2;
+    out_buf->idx = 0;
+    out_buf->off = 0;
+    out_buf->buf[0].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
+    out_buf->buf[0].fd = slab_file_fd;
+    out_buf->buf[0].size = AGGREGATION_SLAB_SIZE - offset;
+    out_buf->buf[0].pos = AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset;
+    out_buf->buf[1].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
+    out_buf->buf[1].fd = big_file_fd;
+    out_buf->buf[1].size = size - out_buf->buf[0].size;
+    out_buf->buf[1].pos = 0;
+    ret = fuse_buf_copy(out_buf, in_buf, 0);
+    if(ret < 0) {
+      perror(strerror(errno));
+      Assert(0);
+      fuse_reply_err(req, -ret);
+      return;
+    }
+  } else {
+    int slab_file_fd = get_slab_file_fd(handle);
+
+    struct fuse_bufvec out_buf = FUSE_BUFVEC_INIT(size);
+    out_buf.buf[0].flags = FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK;
+    out_buf.buf[0].fd = slab_file_fd;
+    out_buf.buf[0].pos = AGGREGATION_HEADER_SIZE + handle->file->slab_file_idx * AGGREGATION_SLAB_SIZE + offset;
+    ret = fuse_buf_copy(&out_buf, in_buf, 0);
+    if(ret < 0) {
+      perror(strerror(errno));
+      Assert(0);
+      fuse_reply_err(req, -ret);
+      return;
+    }
+  }
+  update_mtime(handle);
+  update_ctime(handle);
+
+  struct kv_request kv_req;
+  memset(&kv_req, 0, sizeof(kv_req));
+  kv_req.key = handle->key;
+  kv_req.value = (struct value*)handle;
+  kv_req.type = UPDATE;
+  kv_req.callback = write_callback;
+  kv_req.userdata = malloc(sizeof(void*) * 2);
+  kv_req.userdata[0] = (void*)req;
+  kv_req.userdata[1] = (void*)(uintptr_t)ret;
+
+  kv_submit(&kv_req, 1);
+}
+
 void read_file(fuse_req_t req, struct kfs_file_handle* handle, size_t size, off_t offset) {
   if (offset >= file_size(handle)) {
-    printf("EOF!\n");
-    fuse_reply_err(req, EOF);
-    return;
+    size = 0;
   }
   if (offset + size >= file_size(handle))
     size = file_size(handle) - offset;

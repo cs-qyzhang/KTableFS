@@ -36,12 +36,12 @@ static const struct fuse_opt option_spec[] = {
 };
 
 #ifdef DEBUG
-char log_path[256];
+char log_path[1024];
 int log_fd;
 int lookup_cnt;
 
 static void print_info(const char* func, const char* path) {
-  char buf[256];
+  char buf[1024];
   int len = sprintf(buf, "%s %s pid: %d, tid: %d\n", func, path, getpid(), gettid());
   lseek(log_fd, 0, SEEK_END);
   write(log_fd, buf, len);
@@ -93,7 +93,7 @@ void kfs_lo_init(void* userdata, struct fuse_conn_info* conn) {
   io_init();
   max_file_ino = FUSE_ROOT_ID;
 
-  data->timeout = 2.0;
+  data->timeout = 1.0;
 
   data->root.file = malloc(sizeof(*data->root.file));
   data->root.key = malloc(sizeof(*data->root.key));
@@ -102,6 +102,7 @@ void kfs_lo_init(void* userdata, struct fuse_conn_info* conn) {
   data->root.key->data[1] = '\0';
   data->root.key->val = 0;
   data->root.key->length = 1;
+  data->root.key->hash = file_name_hash(data->root.key->data, data->root.key->length);
   memset(&data->root_stat, 0, sizeof(data->root_stat));
   root_stat = &data->root_stat;
 
@@ -227,7 +228,6 @@ void create_callback(void** userdata, struct kv_respond* respond) {
     memset(&e, 0, sizeof(e));
     e.attr_timeout = kfs_data(req)->timeout;
     e.entry_timeout = kfs_data(req)->timeout;
-    memset(&e, 0, sizeof(e));
     file_fill_stat(&e.attr, file_stat(&respond->value->handle));
     e.ino = (uintptr_t)&respond->value->handle;
     fi->fh = (uintptr_t)&respond->value->handle;
@@ -294,13 +294,10 @@ void kfs_lo_create(fuse_req_t req, fuse_ino_t parent, const char* name,
   // PUT file info
   struct kv_request kv_req[2];
   struct key key;
-  char buf[512];
 
+  key.data = (char*)name;
   key.dir_ino = dir_ino(req, parent);
   key.length = strlen(name);
-  key.data = buf;
-  memcpy(key.data, name, key.length);
-  key.data[key.length] = '\0';
   key.hash = file_name_hash(name, key.length);
 
   memset(&kv_req[0], 0, sizeof(kv_req[0]));
@@ -312,10 +309,9 @@ void kfs_lo_create(fuse_req_t req, fuse_ino_t parent, const char* name,
   kv_req[1].type = GET;
   kv_req[1].key = &key;
   kv_req[1].callback = create_callback;
-  void** userdata = malloc(sizeof(void*) * 2);
-  userdata[0] = (void*)req;
-  userdata[1] = fi;
-  kv_req[1].userdata = userdata;
+  kv_req[1].userdata = malloc(sizeof(void*) * 2);
+  kv_req[1].userdata[0] = (void*)req;
+  kv_req[1].userdata[1] = fi;
 
   kv_submit(kv_req, 2);
 }
@@ -467,13 +463,10 @@ void kfs_lo_mkdir(fuse_req_t req, fuse_ino_t parent, const char* name, mode_t mo
   // PUT file info
   struct kv_request kv_req[2];
   struct key key;
-  char buf[512];
 
   key.dir_ino = dir_ino(req, parent);
   key.length = strlen(name);
-  key.data = buf;
-  memcpy(key.data, name, key.length);
-  key.data[key.length] = '\0';
+  key.data = (char*)name;
   key.hash = file_name_hash(name, key.length);
 
   memset(&kv_req[0], 0, sizeof(kv_req[0]));
@@ -567,10 +560,9 @@ void readdir_scan(void* key, void* value, void** userdata) {
   // buf is small, operation failed.
   if (entsize > (uintptr_t)bufsize) {
     bufsize = (void*)(uintptr_t)0;
-  }
-  else {
+  } else {
     buf = (char*)buf + entsize;
-    bufsize = (void*)((uintptr_t)bufsize - entsize);
+    bufsize = (void*)(uintptr_t)((size_t)bufsize - entsize);
   }
 }
 
@@ -592,8 +584,6 @@ void readdir_callback(void** userdata, struct kv_respond* respond) {
 }
 
 void kfs_do_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, int plus) {
-  char *buf = malloc(size);
-
   struct kv_request kv_req;
   struct key min_key;
   struct key max_key;
@@ -610,13 +600,13 @@ void kfs_do_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, int 
   kv_req.min_key = &min_key;
   kv_req.max_key = &max_key;
   kv_req.scan = readdir_scan;
-  kv_req.scan_arg = malloc(sizeof(void*) * 6);
+  kv_req.scan_arg = malloc(sizeof(void*) * 7);
   kv_req.scan_arg[0] = (void*)req;
-  kv_req.scan_arg[1] = buf;
+  kv_req.scan_arg[1] = malloc(size);
   kv_req.scan_arg[2] = (void*)(uintptr_t)size;
   kv_req.scan_arg[3] = (void*)(uintptr_t)(off + 1);
   kv_req.scan_arg[4] = (void*)(uintptr_t)0;
-  kv_req.scan_arg[5] = buf;
+  kv_req.scan_arg[5] = kv_req.scan_arg[1];
   kv_req.scan_arg[6] = (void*)(uintptr_t)plus;
   kv_req.callback = readdir_callback;
   kv_req.userdata = kv_req.scan_arg;
@@ -712,9 +702,30 @@ void kfs_lo_readdirplus(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
  * @param ino the inode number
  * @param fi file information
  */
-void kfs_lo_release(fuse_req_t req, fuse_ino_t ino,
-                    struct fuse_file_info* fi) {
+void kfs_lo_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info* fi) {
   print_info("release", "");
+  fuse_reply_err(req, 0);
+}
+
+/**
+ * Release an open directory
+ *
+ * For every opendir call there will be exactly one releasedir
+ * call.
+ *
+ * fi->fh will contain the value set by the opendir method, or
+ * will be undefined if the opendir method didn't set any value.
+ *
+ * Valid replies:
+ *   fuse_reply_err
+ *
+ * @param req request handle
+ * @param ino the inode number
+ * @param fi file information
+ */
+void kfs_lo_releasedir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info* fi) {
+  print_info("releasedir", "");
+  fuse_reply_err(req, 0);
 }
 
 /**
@@ -881,7 +892,6 @@ void readlink_callback(void** userdata, struct kv_respond* respond) {
     struct kfs_file_handle* handle = &respond->value->handle;
     assert(handle->file->type & KFS_SYMLINK);
     if (handle->file->next) {
-      printf("readlink next");
       memcpy(buf, handle->file->blob, blob_size);
       buf = (char*)buf + blob_size;
       struct kv_request kv_req;
@@ -935,6 +945,116 @@ void kfs_lo_readlink(fuse_req_t req, fuse_ino_t ino) {
   kv_submit(&kv_req, 1);
 }
 
+/**
+ * Remove a file
+ *
+ * If the file's inode's lookup count is non-zero, the file
+ * system is expected to postpone any removal of the inode
+ * until the lookup count reaches zero (see description of the
+ * forget function).
+ *
+ * Valid replies:
+ *   fuse_reply_err
+ *
+ * @param req request handle
+ * @param parent inode number of the parent directory
+ * @param name to remove
+ */
+void kfs_lo_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
+  print_info("unlink", name);
+
+  // get file handle
+  struct kv_request kv_req;
+  struct key key;
+  memset(&kv_req, 0, sizeof(kv_req));
+  key.data = (char*)name;
+  key.val = 0;
+  key.dir_ino = dir_ino(req, parent);
+  key.length = strlen(name);
+  key.hash = file_name_hash(name, key.length);
+  kv_req.key = &key;
+  kv_req.type = GET;
+  kv_submit(&kv_req, 1);
+}
+
+/**
+ * Forget about an inode
+ *
+ * This function is called when the kernel removes an inode
+ * from its internal caches.
+ *
+ * The inode's lookup count increases by one for every call to
+ * fuse_reply_entry and fuse_reply_create. The nlookup parameter
+ * indicates by how much the lookup count should be decreased.
+ *
+ * Inodes with a non-zero lookup count may receive request from
+ * the kernel even after calls to unlink, rmdir or (when
+ * overwriting an existing file) rename. Filesystems must handle
+ * such requests properly and it is recommended to defer removal
+ * of the inode until the lookup count reaches zero. Calls to
+ * unlink, rmdir or rename will be followed closely by forget
+ * unless the file or directory is open, in which case the
+ * kernel issues forget only after the release or releasedir
+ * calls.
+ *
+ * Note that if a file system will be exported over NFS the
+ * inodes lifetime must extend even beyond forget. See the
+ * generation field in struct fuse_entry_param above.
+ *
+ * On unmount the lookup count for all inodes implicitly drops
+ * to zero. It is not guaranteed that the file system will
+ * receive corresponding forget messages for the affected
+ * inodes.
+ *
+ * Valid replies:
+ *   fuse_reply_none
+ *
+ * @param req request handle
+ * @param ino the inode number
+ * @param nlookup the number of lookups to forget
+ */
+void kfs_lo_forget(fuse_req_t req, fuse_ino_t ino, uint64_t nlookup) {
+  print_info("forget", "");
+  fuse_reply_none(req);
+}
+
+/**
+ * Write data made available in a buffer
+ *
+ * This is a more generic version of the ->write() method.  If
+ * FUSE_CAP_SPLICE_READ is set in fuse_conn_info.want and the
+ * kernel supports splicing from the fuse device, then the
+ * data will be made available in pipe for supporting zero
+ * copy data transfer.
+ *
+ * buf->count is guaranteed to be one (and thus buf->idx is
+ * always zero). The write_buf handler must ensure that
+ * bufv->off is correctly updated (reflecting the number of
+ * bytes read from bufv->buf[0]).
+ *
+ * Unless FUSE_CAP_HANDLE_KILLPRIV is disabled, this method is
+ * expected to reset the setuid and setgid bits.
+ *
+ * Valid replies:
+ *   fuse_reply_write
+ *   fuse_reply_err
+ *
+ * @param req request handle
+ * @param ino the inode number
+ * @param bufv buffer containing the data
+ * @param off offset to write to
+ * @param fi file information
+ */
+void kfs_lo_write_buf(fuse_req_t req, fuse_ino_t ino, struct fuse_bufvec *bufv,
+                      off_t off, struct fuse_file_info *fi) {
+  // print_info("write_buf", ((struct kfs_file_handle*)(uintptr_t)fi->fh)->key->data);
+
+  if (off > 0x4fffffff) {
+    assert(0);
+  }
+  write_file_buf(req, (struct kfs_file_handle*)(uintptr_t)fi->fh, bufv, off);
+}
+
 static const struct fuse_lowlevel_ops lo_oper = {
   .init        = kfs_lo_init,
   .destroy     = kfs_lo_destroy,
@@ -948,8 +1068,10 @@ static const struct fuse_lowlevel_ops lo_oper = {
   .create      = kfs_lo_create,
   .open        = kfs_lo_open,
   .read        = kfs_lo_read,
-  .write       = kfs_lo_write,
-  .release     = NULL,
+  //.write       = kfs_lo_write,
+  .write_buf   = kfs_lo_write_buf,
+  //.release     = kfs_lo_release,
+  .forget      = NULL,
 
   .link        = kfs_lo_link,
   .unlink      = NULL,
@@ -961,7 +1083,7 @@ static const struct fuse_lowlevel_ops lo_oper = {
   .readdir     = kfs_lo_readdir,
   .readdirplus = kfs_lo_readdirplus,
   .rmdir       = NULL,
-  .releasedir  = NULL,
+  // .releasedir  = kfs_lo_releasedir,
 
   .flush       = NULL,
   .fsync       = NULL,

@@ -2,6 +2,7 @@
 #include <string.h>
 #include "kv_impl.h"
 #include "util/memslab.h"
+#include "util/hash.h"
 #include "kvengine/kvengine.h"
 
 size_t kv_to_item(struct key* key, struct value* value, void* item) {
