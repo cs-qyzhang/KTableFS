@@ -2,6 +2,7 @@
 #include <assert.h>
 #include "util/btree.h"
 #include "util/arena.h"
+#include "stdint.h"
 #include "debug.h"
 
 struct btree_node {
@@ -26,13 +27,16 @@ struct btree {
   size_t size;
 };
 
-#define key_less(a, b)    (node->tree->key_cmp((a), (b)) < 0)
-#define key_greater(a, b) (node->tree->key_cmp((a), (b)) > 0)
-#define key_equal(a, b)   (node->tree->key_cmp((a), (b)) == 0)
+// #define key_less(a, b)    (node->tree->key_cmp((a), (b)) < 0)
+// #define key_greater(a, b) (node->tree->key_cmp((a), (b)) > 0)
+// #define key_equal(a, b)   (node->tree->key_cmp((a), (b)) == 0)
+#define key_less(a, b)    ((*(uint64_t*)(a) < *(uint64_t*)(b)) ? 1 : (*(uint64_t*)(a) == *(uint64_t*)(b)) ? (node->tree->key_cmp((a), (b)) < 0) : 0)
+#define key_greater(a, b) ((*(uint64_t*)(a) > *(uint64_t*)(b)) ? 1 : (*(uint64_t*)(a) == *(uint64_t*)(b)) ? (node->tree->key_cmp((a), (b)) > 0) : 0)
+#define key_equal(a, b)   ((*(uint64_t*)(a) == *(uint64_t*)(b)) ? (node->tree->key_cmp((a), (b)) == 0) : 0)
 
 /*
  * return the biggest pair which less than key.
- * if node size is 0 or all pair are bigger than key, return NULL 
+ * if node size is 0 or all pair are bigger than key, return NULL
  */
 static struct pair* btree_node_find(struct btree_node* node, void* key) {
   if (node->head == NULL || key_greater(node->head->key, key)) {

@@ -14,8 +14,8 @@
 #include "debug.h"
 
 int hash_t_comparator(void* a, void* b) {
-  hash_t hash1 = (hash_t)a;
-  hash_t hash2 = (hash_t)b;
+  hash_t hash1 = *(hash_t*)a;
+  hash_t hash2 = *(hash_t*)b;
   return (hash1 < hash2) ? -1 : (hash1 == hash2 ? 0 : 1);
 }
 
@@ -74,7 +74,7 @@ static struct lru_entry* pagecache_find_free_page_(struct pagecache* pgcache) {
   if (pgcache->used_page == pgcache->max_page) {
     // page cache full, use the oldest page
     lru = pgcache->oldest;
-    index_remove(pgcache->index, (void*)(uintptr_t)lru->hash);
+    index_remove(pgcache->index, &lru->hash);
   } else {
     // page cache has free page
     // TODO: use arena?
@@ -90,7 +90,9 @@ static struct lru_entry* pagecache_find_free_page_(struct pagecache* pgcache) {
 
 // callback function
 void pagecache_insert_index(struct io_context* ctx) {
-  index_insert(ctx->thread_data->pagecache->index, (void*)(uintptr_t)ctx->lru->hash, ctx->lru);
+  hash_t* hash = malloc(sizeof(*hash));
+  *hash = ctx->lru->hash;
+  index_insert(ctx->thread_data->pagecache->index, hash, ctx->lru);
   lru_update_(ctx->thread_data->pagecache, ctx->lru);
 }
 
@@ -98,7 +100,9 @@ void io_context_enqueue(struct io_context* ctx);
 
 void* page_read_sync(struct pagecache* pgcache, hash_t hash, size_t page_offset) {
   struct lru_entry* lru;
-  lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
+  hash_t* h = malloc(sizeof(hash_t));
+  *h = hash;
+  lru = index_lookup(pgcache->index, h);
   if (!lru) {
     lru = pagecache_find_free_page_(pgcache);
     lru->hash = hash;
@@ -119,7 +123,9 @@ void* page_read_sync(struct pagecache* pgcache, hash_t hash, size_t page_offset)
 void page_read(struct pagecache* pgcache, hash_t hash, size_t page_offset,
                struct io_context* ctx) {
   struct lru_entry* lru;
-  lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
+  hash_t* h = malloc(sizeof(hash_t));
+  *h = hash;
+  lru = index_lookup(pgcache->index, h);
   if (lru) {
     void* item = &lru->page[page_offset];
     item_to_value(item, &ctx->respond.value);
@@ -164,7 +170,9 @@ void page_write(struct pagecache* pgcache, hash_t hash, size_t page_offset,
                 void* data, size_t size, struct io_context* ctx) {
 
   struct lru_entry* lru;
-  lru = index_lookup(pgcache->index, (void*)(uintptr_t)hash);
+  hash_t* h = malloc(sizeof(hash_t));
+  *h = hash;
+  lru = index_lookup(pgcache->index, h);
   if (lru) {
     ctx->lru = lru;
     ctx->page_offset = page_offset;

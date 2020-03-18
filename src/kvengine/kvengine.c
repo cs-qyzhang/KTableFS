@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <errno.h>
+#include <sched.h>
 #include "util/queue.h"
 #include "util/freelist.h"
 #include "util/index.h"
@@ -35,9 +36,9 @@ pthread_t* threads;
 int thread_nr;
 
 static inline void nop() {
-  //for (volatile int i = 0; i < 10000; ++i) ;
-  static struct timespec req_tm = {.tv_sec = 0, .tv_nsec = 100};
-  nanosleep(&req_tm, NULL);
+  for (volatile int i = 0; i < 1000; ++i) ;
+  // static struct timespec req_tm = {.tv_sec = 0, .tv_nsec = 100};
+  // nanosleep(&req_tm, NULL);
 }
 
 void io_context_enqueue(struct io_context* ctx) {
@@ -236,6 +237,18 @@ int worker_deque_request(struct thread_data* thread_data) {
   return req_nr;
 }
 
+static void pin_me_on(int core) {
+  cpu_set_t cpuset;
+  pthread_t thread = pthread_self();
+
+  CPU_ZERO(&cpuset);
+  CPU_SET(core, &cpuset);
+
+  int s = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+  if (s != 0)
+    printf("Cannot pin thread on core %d\n", core);
+}
+
 void* worker_thread_main(void* arg) {
   struct thread_data* thread_data = arg;
 
@@ -247,6 +260,8 @@ void* worker_thread_main(void* arg) {
   aio_context_t aio_ctx;
   io_setup(AIO_MAX_EVENTS, &aio_ctx);
   thread_data->aio_ctx = aio_ctx;
+
+  // pin_me_on(thread_data->thread_index);
 
   while (1) {
     worker_deque_request(thread_data);
@@ -294,12 +309,12 @@ void* worker_thread_main(void* arg) {
 
 void thread_data_init(struct thread_data* data, int thread_idx, struct kv_options* option) {
   pthread_mutex_init(&data->thread_lock, NULL);
-  data->kv_batch_queue = queue_new(64);
+  data->kv_batch_queue = queue_new(128);
   data->index = index_new(key_comparator);
   data->io_context_queue = queue_new(64);
   data->arena = arena_new();
   data->pagecache = pagecache_new(PAGECACHE_NR_PAGE);
-  data->max_sequence = 0;
+  data->thread_index = thread_idx;
   data->slab = malloc(sizeof(struct slab));
   data->slab->slab_size = 256;
   data->slab->used = 0;

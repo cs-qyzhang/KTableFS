@@ -5,14 +5,6 @@
 // TODO
 #define die(x)  _exit(-1)
 
-struct queue {
-  size_t nmemb_;
-  size_t max_size_;
-  volatile int head_;
-  volatile int tail_;
-  void** que_;
-};
-
 struct queue* queue_new(size_t max_size) {
   assert(max_size > 1);
   struct queue* que = malloc(sizeof(struct queue));
@@ -28,14 +20,6 @@ void queue_destroy(struct queue* que) {
   free(que);
 }
 
-int queue_empty(struct queue* que) {
-  return !(que->head_ - que->tail_);
-}
-
-int queue_full(struct queue* que) {
-  return !((que->head_ + 1 - que->tail_) % que->max_size_);
-}
-
 void* dequeue(struct queue* que) {
   if (queue_empty(que)) {
     return NULL;
@@ -45,19 +29,18 @@ void* dequeue(struct queue* que) {
   return ret;
 }
 
-/* 
+static inline void nop() {
+  for (volatile int i = 0; i < 1000; ++i) ;
+}
+
+/*
  * @data pointer to actual data, must be different
  */
 int enqueue(struct queue* que, void* data) {
-  if (queue_full(que)) {
-    // die("queue full!");
-    return -1;
+  while (queue_full(que)) {
+    nop();
   }
   que->que_[que->head_] = data;
   que->head_ = (que->head_ + 1) % que->max_size_;
   return 0;
-}
-
-size_t queue_size(struct queue* que) {
-  return (que->head_ + que->max_size_ - que->tail_) % que->max_size_;
 }

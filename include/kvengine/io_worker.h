@@ -19,7 +19,7 @@ struct thread_data {
   struct slab* slab;
   struct pagecache* pagecache;
   aio_context_t aio_ctx;
-  int max_sequence;
+  int thread_index;
 };
 
 #endif // KTABLEFS_KVENGINE_IO_WORKER_H_

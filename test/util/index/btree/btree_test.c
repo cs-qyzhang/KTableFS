@@ -2,11 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stdint.h>
 #include "util/btree.h"
 #include "kvengine/kvengine.h"
 
 struct key {
-  int val;
+  uint64_t val;
   char* data;
 };
 

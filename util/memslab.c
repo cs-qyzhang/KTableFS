@@ -8,6 +8,7 @@ struct memslab* memslab_new(int size) {
   struct memslab* memslab = arena_allocate(arena, sizeof(*memslab));
   memslab->arena = arena;
   memslab->freelist = freelist_new(arena);
+  memslab->slab_size = size;
   return memslab;
 }
 

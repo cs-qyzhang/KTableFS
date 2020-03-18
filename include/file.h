@@ -82,7 +82,7 @@ static inline void update_mtime(struct kfs_file_handle* handle) {
 }
 
 static inline void file_fill_stat(struct stat* dst, struct kfs_stat* src) {
-  memset(dst, 0, sizeof(*dst));
+  //memset(dst, 0, sizeof(*dst));
   dst->st_blksize = root_stat->st_blksize;
   dst->st_dev = root_stat->st_dev;
   dst->st_rdev = root_stat->st_rdev;

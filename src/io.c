@@ -144,8 +144,10 @@ void allocate_aggregation_slab(uint32_t* file_no, uint32_t* file_idx) {
 void write_callback(void** userdata, struct kv_respond* respond) {
   fuse_req_t req = (fuse_req_t)userdata[0];
   ssize_t count = (uintptr_t)userdata[1];
-  if (respond->res < 0)
+  if (respond->res < 0) {
     fuse_reply_err(req, -respond->res);
+    Assert(0);
+  }
   else
     fuse_reply_write(req, count);
 }

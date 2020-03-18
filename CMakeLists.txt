@@ -4,17 +4,18 @@ project(KTableFS)
 
 # program configurations
 set(KTableFS_VERSION_MAJOR 0)
-set(KTableFS_VERSION_MINOR 1)
+set(KTableFS_VERSION_MINOR 2)
 set(PAGE_SIZE 4096)
-set(PAGECACHE_NR_PAGE 4096)
-set(ARENA_NB_BLOCKS 512)
+set(PAGECACHE_NR_PAGE 8192)
+set(ARENA_NB_BLOCKS 1024)
 set(ARENA_BLOCK_SIZE PAGE_SIZE)
 set(AIO_MAX_EVENTS 64)
-set(BTREE_ORDER 16)
-set(KVENGINE_THREAD_NR 4)
+set(BTREE_ORDER 4)
+set(KVENGINE_THREAD_NR 1)
 set(AGGREGATION_SLAB_SIZE "(1024 * 64)")
 set(AGGREGATION_SLAB_NR 1024)
 set(AGGREGATION_HEADER_SIZE 4096)  # (4+((AGGREGATION_SLAB_NR+7)/8)+BLOCK_SIZE-1)/BLOCK_SIZE*BLOCK_SIZE
+set(INDEX_TYPE rbtree)
 
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_C_STANDARD 11)
@@ -56,6 +57,7 @@ test_unit(arena util/arena)
 test_unit(queue util/queue)
 target_link_libraries(queue_test pthread)
 test_unit(btree util/index/btree/btree util/arena)
+test_unit(rbtree util/index/rbtree/rbtree util/arena util/freelist util/memslab util/hash_table)
 
 # add_executable(kvengine_test)
 # target_sources(kvengine_test
@@ -110,14 +112,28 @@ target_sources(ktablefs_ll
     "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
-    "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
-    "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
     "${PROJECT_SOURCE_DIR}/util/hash.c"
     "${PROJECT_SOURCE_DIR}/util/arena.c"
     "${PROJECT_SOURCE_DIR}/util/freelist.c"
     "${PROJECT_SOURCE_DIR}/util/queue.c"
     "${PROJECT_SOURCE_DIR}/util/memslab.c"
+    "${PROJECT_SOURCE_DIR}/util/hash_table.c"
 )
+if (INDEX_TYPE MATCHES rbtree)
+  target_sources(ktablefs_ll
+    PRIVATE
+      "${PROJECT_SOURCE_DIR}/src/kvengine/rbtree_index.c"
+      "${PROJECT_SOURCE_DIR}/util/index/rbtree/rbtree.c"
+  )
+elseif (INDEX_TYPE MATCHES btree)
+  target_sources(ktablefs_ll
+    PRIVATE
+      "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
+      "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
+  )
+else()
+  message(ERROR "Wrong INDEX TYPE!")
+endif()
 target_link_libraries(ktablefs_ll pthread fuse3)
 
 add_executable(ext4-fuse)

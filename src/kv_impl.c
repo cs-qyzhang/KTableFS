@@ -61,9 +61,9 @@ struct key* keydup(struct key* key) {
 }
 
 void keydup_free(struct key* key) {
-  if (key->data)
-    free(key->data);
-  memslab_free(&key_memslab, key);
+  // if (key->data)
+  //   free(key->data);
+  // memslab_free(&key_memslab, key);
 }
 
 struct value* valuedup(struct value* value) {
