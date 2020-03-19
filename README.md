@@ -35,3 +35,5 @@ Normally define struct members in size decreasing order will be good.
 ### file aggregation
 
 ![file aggregation](doc/figure/file_aggregation.png)
+
+https://stackoverflow.com/a/10997489/7640227

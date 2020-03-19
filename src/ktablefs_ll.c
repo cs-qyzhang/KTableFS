@@ -168,8 +168,8 @@ void lookup_callback(void** userdata, struct kv_respond* respond) {
     fuse_reply_err(req, -respond->res);
   else {
     struct kfs_file_handle* handle = &respond->value->handle;
-    // if (handle->file->type & KFS_REG) {
-    if (1) {
+    if (handle->file->type & KFS_REG) {
+    // if (1) {
       struct fuse_entry_param e;
       memset(&e, 0, sizeof(e));
       e.attr_timeout = kfs_data(req)->timeout;
@@ -265,8 +265,8 @@ void kfs_lo_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info* fi) {
 
   struct stat statbuf;
   struct kfs_file_handle* handle = kfs_file_handle(req, ino);
-  // if (handle->file->type & KFS_REG) {
-  if (1) {
+  if (handle->file->type & KFS_REG) {
+  // if (1) {
     file_fill_stat(&statbuf, file_stat(handle));
     fuse_reply_attr(req, &statbuf, kfs_data(req)->timeout);
   } else if (handle->file->type & KFS_HARDLINK) {
@@ -797,7 +797,7 @@ void link_hardlink_callback(void** userdata, struct kv_respond* respond) {
     handle->key->data = newname;
     handle->key->dir_ino = parent_ino;
     handle->key->length = strlen(newname);
-    handle->key->hash = file_name_hash(newname, kv_req[1].key->length);
+    handle->key->hash = file_name_hash(newname, handle->key->length);
     memset(&kv_req[1], 0, sizeof(kv_req[1]));
     kv_req[1].key = handle->key;
     kv_req[1].value = (struct value*)handle;
@@ -1292,10 +1292,8 @@ static const struct fuse_lowlevel_ops lo_oper = {
   .rename      = NULL,
 
   .mknod       = kfs_lo_mknod,
-  // .create      = kfs_lo_create,
   .open        = kfs_lo_open,
   .read        = kfs_lo_read,
-  //.write       = kfs_lo_write,
   .write_buf   = kfs_lo_write_buf,
   //.release     = kfs_lo_release,
   .forget      = NULL,
@@ -1309,7 +1307,7 @@ static const struct fuse_lowlevel_ops lo_oper = {
   .opendir     = kfs_lo_opendir,
   .readdir     = kfs_lo_readdir,
   .readdirplus = kfs_lo_readdirplus,
-  .rmdir       = NULL,
+  .rmdir       = kfs_lo_unlink,
   // .releasedir  = kfs_lo_releasedir,
 
   .flush       = NULL,
