@@ -3,6 +3,7 @@ import os;
 import matplotlib;
 import matplotlib.pyplot as plt;
 import numpy as np;
+from datetime import datetime;
 # matplotlib.use("pgf")
 # matplotlib.rcParams.update({
 #     "pgf.texsystem": "xelatex",
@@ -15,11 +16,12 @@ filebench = "/home/qyzhang/src/filebench-1.5-alpha3/build/bin/filebench"
 perf_name_dict = {"ops/s": "IOPS", "mb/s": "bandwidth", "ms/op": "latency", "max ms/op": "max latency", "min ms/op": "min latency"};
 
 class Bench:
-    def __init__(self, progs, benchfile, args):
+    def __init__(self, progs, benchfile, args, machine):
         self.progs = progs;
         self.benchfile = benchfile;
         self.args = args;
         self.stats = [];
+        self.machine = machine;
         if os.path.exists("Manifest"):
             with open("Manifest", 'r+') as f:
                 s = f.read();
@@ -28,7 +30,7 @@ class Bench:
                 f.write(str(self.seq));
         else:
             with open("Manifest", 'w+') as f:
-                self.seq = 0;
+                self.seq = 1;
                 f.write(str(0));
 
     def parse_args(self):
@@ -197,7 +199,7 @@ class Bench:
 \catcode`_=12
 \begin{tabular}{""" + "|c" * (2 + prog_nr)  + r"""|}
 \hline
-\textbf{\large 操作} & \textbf{\large 指标}""";
+\addstackgap[8pt]{\textbf{\large 操作}} & \textbf{\large 指标}""";
 
         for i in range(prog_nr):
             tex = tex + r" & \textbf{\large " + self.stats[i]["name"] + "}";
@@ -230,7 +232,7 @@ class Bench:
                 else:
                     tex += r"\\\hhline{|" + "=" * (prog_nr + 2) + "|}\n";
 
-        tex += r"\multirow{3}{*}{total}";
+        tex += r"\multirow{4}{*}{total}";
         for perf in ["ops/s", "mb/s", "ms/op"]:
             tex += " & " + perf_name_dict[perf] + " (" + perf.split()[-1] + ")";
             data = [];
@@ -247,12 +249,24 @@ class Bench:
                 elif min_ != max_ and d == max_:
                     tex += r"\cellcolor{maxcolor}";
                 tex += str(d);
-            if perf != "ms/op":
-                tex += r"\\\cline{2-" + str(prog_nr + 2) + "}\n";
-            else:
-                tex += r"\\\hline" + "\n";
+            tex += r"\\\cline{2-" + str(prog_nr + 2) + "}\n";
 
-        tex += r"""\end{tabular}
+        tex += " & run time (s)";
+        data = [];
+        for j in range(prog_nr):
+            data.append(self.stats[j]["run time"]);
+        min_ = "{:.3f}".format(max(data));
+        max_ = "{:.3f}".format(min(data));
+        for d in data:
+            tex += " & ";
+            d = "{:.3f}".format(d);
+            if min_ != max_ and d == min_:
+                tex += r"\cellcolor{mincolor}";
+            elif min_ != max_ and d == max_:
+                tex += r"\cellcolor{maxcolor}";
+            tex += d;
+        tex += r"""\\\hline
+\end{tabular}
 \end{table}
 """;
         return tex;
@@ -267,6 +281,7 @@ class Bench:
 \usepackage{xcolor}
 \usepackage{multirow}
 \usepackage{hhline}
+\usepackage{stackengine}
 \usepackage[left=2cm,right=2cm,top=2cm,bottom=2cm]{geometry}
 
 \setCJKmainfont[%
@@ -281,16 +296,122 @@ class Bench:
   BoldFont=Source Han Sans CN Bold,%
   ItalicFont=FZKai-Z03S,%
   BoldItalicFont=FZCuKaiS-R-GB]{Source Han Sans CN}
+\newCJKfontfamily\kai[BoldFont=FZCuKaiS-R-GB]{FZKai-Z03S}
+\newCJKfontfamily\xiaobiaosong[BoldFont=FZXiaoBiaoSong-B05S]{FZXiaoBiaoSong-B05S}
+\newCJKfontfamily\dabiaosong[BoldFont=FZDaBiaoSong-B06S]{FZDaBiaoSong-B06S}
 \setmainfont{TeX Gyre Termes}
 \setsansfont{Gotham Rounded Medium}
 
 \definecolor{maxcolor}{rgb}{0.24, 0.71, 0.54}
 \definecolor{mincolor}{rgb}{0.89, 0.26, 0.2}
 
+\pagestyle{plain}
+
 \begin{document}
-\pagestyle{empty}
+
+\newgeometry{left=3cm,right=3cm,top=3cm,bottom=3cm}
 """;
             f.write(preamble);
+
+            f.write(r"""
+\begin{center}
+\Huge\dabiaosong\noindent KTableFS测试报告
+\end{center}
+\vspace{3em}
+
+{\Large\xiaobiaosong\noindent 测试环境}
+
+\begin{description}
+""");
+            def write_item(name, content):
+                f.write(r"\item[" + name + ":] " + content + "\n");
+
+            write_item("Machine Type", self.machine);
+            stream = os.popen("lscpu | grep 'Model name'");
+            write_item("CPU Model", stream.read()[33:][:-1]);
+
+            stream = os.popen("df -P " + self.args["mountdir"] + " | awk 'END{print $1}'");
+            partition = stream.read()[:-1];
+            stream = os.popen("cat /sys/class/block/" + partition.split('/')[-1] + "/dev");
+            dev = stream.read()[:-1];
+            dev = dev.split(':')[0] + ":0";
+            stream = os.popen("cat /sys/dev/block/" + dev + "/device/model");
+            disk_model = stream.read()[:-1].strip();
+            stream = os.popen("cat /sys/dev/block/" + dev + "/size");
+            disk_size = int(int(stream.read()[:-1]) * 512.0 / 1000 / 1000 / 1000);
+            write_item("Disk Model", disk_model + " (" + str(disk_size) + "G)");
+
+            stream = os.popen("hostnamectl | grep 'Operating System'");
+            os_release = stream.read()[:-1].split(':')[-1].strip();
+            write_item("OS", os_release)
+
+            stream = os.popen("hostnamectl | grep 'Kernel'");
+            kernel = stream.read()[:-1].split(':')[-1].strip();
+            write_item("Kernel", kernel);
+
+            write_item("Benchmark Workload", self.benchfile.split('.')[0]);
+
+            with open(self.benchfile, 'r') as bench:
+                for line in bench.readlines():
+                    if len(line) > 3 and line[:3] == "set":
+                        param = line.split()[-1].split('=')[0][1:];
+                        if param == "meanfilesize":
+                            file_size = line.split()[-1].split('=')[1];
+                            if file_size[-1] == 'k':
+                                write_item("Benchmark File Size", file_size[:-1] + " KB");
+                            if file_size[-1] == 'm':
+                                write_item("Benchmark File Size", file_size[:-1] + " MB");
+                            if file_size[-1] == 'g':
+                                write_item("Benchmark File Size", file_size[:-1] + " GB");
+                        elif param == "nfiles":
+                            nfiles = int(line.split()[-1].split('=')[1]);
+                            magtitude = 0;
+                            while nfiles > 1000:
+                                nfiles = nfiles // 1000;
+                                magtitude += 1;
+                            write_item("Benchmark Number of File", str(nfiles) + ", 000" * magtitude);
+
+            with open("../CMakeLists.txt", 'r') as cmake:
+                for line in cmake.readlines():
+                    if len(line) > 5 and line[:3]  == "set":
+                        param = line.split()[0].split('(')[-1];
+                        if param == "PAGECACHE_NR_PAGE":
+                            pagecache_size = 4096 * int(line.split()[1][:-1]);
+                            if pagecache_size > 1024 * 1024 * 1024:
+                                write_item("KTableFS Pagecache Size", str(int(pagecache_size / 1024 / 1024 / 1024)) + " GB");
+                            elif pagecache_size > 1024 * 1024:
+                                write_item("KTableFS Pagecache Size", str(int(pagecache_size / 1024 / 1024)) + " MB");
+                            elif pagecache_size > 1024:
+                                write_item("KTableFS Pagecache Size", str(int(pagecache_size / 1024)) + " KB");
+                            else:
+                                write_item("KTableFS Pagecache Size", str(int(pagecache_size)) + " Byte");
+                        elif param == "INDEX_TYPE":
+                            index = line.split()[1][:-1];
+                            if index == 'btree':
+                                write_item("KTableFS Index Type", "B Tree");
+                            elif index == 'rbtree':
+                                write_item("KTableFS Index Type", "Red-Black Tree");
+                        elif param == "AGGREGATION_SLAB_SIZE":
+                            write_item("KTableFS Aggregation File Slab Size", line.split()[1][:-1] + " KB");
+                        elif param == "KVENGINE_THREAD_NR":
+                            write_item("KTableFS Thread Number", line.split()[1][:-1]);
+
+            if self.args["single thread"]:
+                write_item("FUSE Multi Thread", "No");
+            else:
+                write_item("FUSE Multi Thread", "Yes");
+
+            f.write(r"""\end{description}
+
+\vfill
+\begin{flushright}
+张丘洋\\
+测试时间：""" + datetime.now().strftime("%Y 年 %-m 月 %-d 日 %H:%M") + r"""\\
+Generated by \LaTeX, Python and Matplotlib
+\end{flushright}
+\clearpage
+\restoregeometry
+""");
 
             f.write(self.draw_figure("ops/s"));
             f.write(self.draw_figure("ms/op"));
@@ -302,22 +423,22 @@ class Bench:
             self.run_cmd_("ln -s " + file_name + ".tex summary.tex");
 
         if (latexmk):
-            self.run_cmd_("latexmk " + file_name + ".tex");
-            self.run_cmd_("latexmk -c " + file_name + ".tex");
+            self.run_cmd_("latexmk " + file_name + ".tex > /dev/null");
+            self.run_cmd_("latexmk -c " + file_name + ".tex > /dev/null");
             self.run_cmd_("rm summary.pdf");
             self.run_cmd_("ln -s " + file_name + ".pdf summary.pdf");
 
 if __name__ == "__main__":
     progs = [
-        "/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/ktablefs_ll",
-        "/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/ktablefs",
         "/home/qyzhang/src/tablefs-0.3/src/tablefs",
-        "/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/ext4-fuse"
+        "/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/ktablefs",
+        "/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/ext4-fuse",
+        "/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/ktablefs_ll",
     ];
     args = {};
     args["single thread"] = 1;
     args["datadir"] = "/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/datadir";
     args["mountdir"] = "/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/mount";
-    bench = Bench(progs, "copyfiles.f", args);
+    bench = Bench(progs, "copyfiles.f", args, "ThinkPad T490");
     bench.run();
     bench.summary(True);
