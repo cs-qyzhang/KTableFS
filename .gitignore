@@ -56,3 +56,7 @@ build
 .vscode
 include/ktablefs_config.h
 !doc/Makefile
+tools/*
+!tools/*.py
+!tools/*.f
+!latexmkrc

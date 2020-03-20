@@ -12,6 +12,7 @@ import numpy as np;
 # })
 
 filebench = "/home/qyzhang/src/filebench-1.5-alpha3/build/bin/filebench"
+perf_name_dict = {"ops/s": "IOPS", "mb/s": "bandwidth", "ms/op": "latency", "max ms/op": "max latency", "min ms/op": "min latency"};
 
 class Bench:
     def __init__(self, progs, benchfile, args):
@@ -19,6 +20,16 @@ class Bench:
         self.benchfile = benchfile;
         self.args = args;
         self.stats = [];
+        if os.path.exists("Manifest"):
+            with open("Manifest", 'r+') as f:
+                s = f.read();
+                self.seq = int(s) + 1;
+                f.seek(0);
+                f.write(str(self.seq));
+        else:
+            with open("Manifest", 'w+') as f:
+                self.seq = 0;
+                f.write(str(0));
 
     def parse_args(self):
         arg_list = [];
@@ -123,7 +134,7 @@ class Bench:
                         textcoords="offset points",
                         ha='center', va='bottom');
 
-    def draw(self):
+    def draw_figure(self, perf, show=False):
         prog_nr = len(self.stats);
         if prog_nr == 0:
             return;
@@ -136,21 +147,19 @@ class Bench:
         data = [[] for i in range(prog_nr)];
         for i in range(prog_nr):
             for op in self.stats[i]["per-operation"]:
-                data[i].append(op["ops/s"]);
-            data[i].append(self.stats[i]["summary"]["ops/s"]);
+                data[i].append(op[perf]);
+            data[i].append(self.stats[i]["summary"][perf]);
 
         x = np.arange(len(labels));  # the label locations
         width = 0.9 / prog_nr;  # the width of the bars
 
         fig, ax = plt.subplots();
-        rects = [];
         for i in range(prog_nr):
             rect = ax.bar(x - (prog_nr - 1) * width / 2.0 + i * width, data[i], width, label=self.stats[i]["name"]);
-            rects.append(rect);
+            # self.autolabel_(ax, rect);
 
-        # Add some text for labels, title and custom x-axis tick labels, etc.
-        ax.set_ylabel('op/s');
-        ax.set_title('op/s');
+        ax.set_ylabel(perf);
+        ax.set_title(perf_name_dict[perf]);
         ax.set_xticks(x);
         ax.set_xticklabels(labels);
         ax.legend();
@@ -158,14 +167,145 @@ class Bench:
         ax.yaxis.grid(True, color='#EEEEEE');
         ax.xaxis.grid(False);
 
-        for rect in rects:
-            self.autolabel_(ax, rect);
+        fig.tight_layout();
 
-        fig.tight_layout()
+        fig_name = perf_name_dict[perf] + "-" + str(self.seq);
+        plt.savefig(fig_name + ".pgf");
+        plt.savefig(fig_name + ".pdf");
+        if show:
+            plt.show();
 
-        plt.savefig("fig.pgf")
-        plt.show()
+        tex = r"""
+\begin{figure}[!htbp]
+\begin{center}
+   \scalebox{0.9}{\input{""" + fig_name + r""".pgf}}
+\end{center}
+\end{figure}
+""";
+        return tex;
 
+    def draw_table(self):
+        prog_nr = len(self.stats);
+        if prog_nr == 0:
+            return;
+
+        tex = r"""
+\begin{table}[!htbp]
+\centering
+\setlength{\tabcolsep}{12pt}
+\setlength\doublerulesep{1.5pt}
+\catcode`_=12
+\begin{tabular}{""" + "|c" * (2 + prog_nr)  + r"""|}
+\hline
+\textbf{\large 操作} & \textbf{\large 指标}""";
+
+        for i in range(prog_nr):
+            tex = tex + r" & \textbf{\large " + self.stats[i]["name"] + "}";
+        tex += r" \\\hline" + "\n";
+
+        labels = [];
+        for op in self.stats[0]["per-operation"]:
+            labels.append(op["name"]);
+
+        for i in range(len(labels)):
+            tex += r"\multirow{5}{*}{" + labels[i] + "}\n";
+            for perf in ["ops/s", "mb/s", "ms/op", "min ms/op", "max ms/op"]:
+                tex += " & " + perf_name_dict[perf] + " (" + perf.split()[-1] + ")";
+                data = [];
+                for j in range(prog_nr):
+                    data.append(self.stats[j]["per-operation"][i][perf]);
+                min_ = min(data);
+                max_ = max(data);
+                if perf[-2:] == "op":
+                    min_, max_ = max_, min_;
+                for d in data:
+                    tex += " & ";
+                    if min_ != max_ and d == min_:
+                        tex += r"\cellcolor{mincolor}";
+                    elif min_ != max_ and d == max_:
+                        tex += r"\cellcolor{maxcolor}";
+                    tex += str(d);
+                if perf != "max ms/op":
+                    tex += r"\\\cline{2-" + str(prog_nr + 2) + "}\n";
+                else:
+                    tex += r"\\\hhline{|" + "=" * (prog_nr + 2) + "|}\n";
+
+        tex += r"\multirow{3}{*}{total}";
+        for perf in ["ops/s", "mb/s", "ms/op"]:
+            tex += " & " + perf_name_dict[perf] + " (" + perf.split()[-1] + ")";
+            data = [];
+            for j in range(prog_nr):
+                data.append(self.stats[j]["summary"][perf]);
+            min_ = min(data);
+            max_ = max(data);
+            if perf[-2:] == "op":
+                min_, max_ = max_, min_;
+            for d in data:
+                tex += " & ";
+                if min_ != max_ and d == min_:
+                    tex += r"\cellcolor{mincolor}";
+                elif min_ != max_ and d == max_:
+                    tex += r"\cellcolor{maxcolor}";
+                tex += str(d);
+            if perf != "ms/op":
+                tex += r"\\\cline{2-" + str(prog_nr + 2) + "}\n";
+            else:
+                tex += r"\\\hline" + "\n";
+
+        tex += r"""\end{tabular}
+\end{table}
+""";
+        return tex;
+
+    def summary(self, latexmk=False):
+        file_name = "summary-" + str(self.seq);
+        with open(file_name + ".tex", "w+") as f:
+            preamble = r"""\documentclass{ctexart}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{colortbl}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{hhline}
+\usepackage[left=2cm,right=2cm,top=2cm,bottom=2cm]{geometry}
+
+\setCJKmainfont[%
+  BoldFont=Source Han Serif CN Bold,%
+  ItalicFont=FZKai-Z03S,%
+  BoldItalicFont=FZCuKaiS-R-GB]{Source Han Serif CN}
+\setCJKsansfont[%
+  BoldFont=Source Han Sans CN Bold,%
+  ItalicFont=FZKai-Z03S,%
+  BoldItalicFont=FZCuKaiS-R-GB]{Source Han Sans CN}
+\setCJKmonofont[%
+  BoldFont=Source Han Sans CN Bold,%
+  ItalicFont=FZKai-Z03S,%
+  BoldItalicFont=FZCuKaiS-R-GB]{Source Han Sans CN}
+\setmainfont{TeX Gyre Termes}
+\setsansfont{Gotham Rounded Medium}
+
+\definecolor{maxcolor}{rgb}{0.24, 0.71, 0.54}
+\definecolor{mincolor}{rgb}{0.89, 0.26, 0.2}
+
+\begin{document}
+\pagestyle{empty}
+""";
+            f.write(preamble);
+
+            f.write(self.draw_figure("ops/s"));
+            f.write(self.draw_figure("ms/op"));
+            f.write(self.draw_table());
+
+            f.write(r"\end{document}" + "\n");
+            f.close();
+            self.run_cmd_("rm summary.tex");
+            self.run_cmd_("ln -s " + file_name + ".tex summary.tex");
+
+        if (latexmk):
+            self.run_cmd_("latexmk " + file_name + ".tex");
+            self.run_cmd_("latexmk -c " + file_name + ".tex");
+            self.run_cmd_("rm summary.pdf");
+            self.run_cmd_("ln -s " + file_name + ".pdf summary.pdf");
 
 if __name__ == "__main__":
     progs = [
@@ -180,4 +320,4 @@ if __name__ == "__main__":
     args["mountdir"] = "/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/mount";
     bench = Bench(progs, "copyfiles.f", args);
     bench.run();
-    bench.draw();
+    bench.summary(True);
