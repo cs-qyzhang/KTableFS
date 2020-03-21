@@ -4,19 +4,12 @@ import matplotlib;
 import matplotlib.pyplot as plt;
 import numpy as np;
 from datetime import datetime;
-# matplotlib.use("pgf")
-# matplotlib.rcParams.update({
-#     "pgf.texsystem": "xelatex",
-#     'font.family': 'serif',
-#     'text.usetex': True,
-#     'pgf.rcfonts': False,
-# })
 
 path_prefix = "/home/qyzhang/Projects/GraduationProject/code/"
 # path_prefix = "/root/"
 
 machine_name = "ThinkPad-T490"
-filebench = path_prefix + "filebench-1.5-alpha3/filebench"
+filebench = path_prefix + "filebench-1.5-alpha3/build/bin/filebench"
 perf_name_dict = {"ops/s": "IOPS", "mb/s": "bandwidth", "ms/op": "latency", "max ms/op": "max latency", "min ms/op": "min latency"};
 
 class Bench:
@@ -452,6 +445,6 @@ if __name__ == "__main__":
     args["single thread"] = 1;
     args["datadir"] = path_prefix + "KTableFS/build/datadir";
     args["mountdir"] = path_prefix + "KTableFS/build/mount";
-    bench = Bench(progs, "copyfiles.f", args, "ThinkPad T490");
+    bench = Bench(progs, "copyfiles.f", args, machine_name);
     bench.run();
     bench.summary(True);

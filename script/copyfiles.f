@@ -24,7 +24,7 @@
 #
 
 set $dir=/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/mount
-set $nfiles=4000
+set $nfiles=500000
 set $meandirwidth=20
 set $meanfilesize=4k
 set $iosize=1m
