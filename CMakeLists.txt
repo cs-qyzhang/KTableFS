@@ -59,55 +59,13 @@ target_link_libraries(queue_test pthread)
 test_unit(btree util/index/btree/btree util/arena)
 test_unit(rbtree util/index/rbtree/rbtree util/arena util/freelist util/memslab util/hash_table)
 
-# add_executable(kvengine_test)
-# target_sources(kvengine_test
-#   PRIVATE
-#     "${PROJECT_SOURCE_DIR}/test/kvengine/kvengine_test.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
-#     "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
-#     "${PROJECT_SOURCE_DIR}/util/hash.c"
-#     "${PROJECT_SOURCE_DIR}/util/freelist.c"
-#     "${PROJECT_SOURCE_DIR}/util/queue.c"
-#     "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
-#     "${PROJECT_SOURCE_DIR}/util/arena.c"
-# )
-# target_link_libraries(kvengine_test pthread)
-# add_test(kvengine_test kvengine_test)
-
 add_executable(aio_test "${PROJECT_SOURCE_DIR}/test/kvengine/aio_test.c")
 add_test(aio_test aio_test)
 
-add_executable(fuse_test "${PROJECT_SOURCE_DIR}/test/fuse_test.c")
-target_link_libraries(fuse_test fuse3)
-#add_test(fuse_test fuse_test)
-
-# add_executable(ktablefs)
-# target_sources(ktablefs
-#   PRIVATE
-#     "${PROJECT_SOURCE_DIR}/src/dcache.c"
-#     "${PROJECT_SOURCE_DIR}/src/io.c"
-#     "${PROJECT_SOURCE_DIR}/src/ktablefs.c"
-#     "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/btree_index.c"
-#     "${PROJECT_SOURCE_DIR}/util/hash.c"
-#     "${PROJECT_SOURCE_DIR}/util/freelist.c"
-#     "${PROJECT_SOURCE_DIR}/util/queue.c"
-#     "${PROJECT_SOURCE_DIR}/util/index/btree/btree.c"
-#     "${PROJECT_SOURCE_DIR}/util/arena.c"
-# )
-# target_link_libraries(ktablefs pthread fuse3)
-
-add_executable(ktablefs_ll)
+add_executable(ktablefs_ll "${PROJECT_SOURCE_DIR}/src/ktablefs_ll.c")
 target_sources(ktablefs_ll
   PRIVATE
     "${PROJECT_SOURCE_DIR}/src/io.c"
-    "${PROJECT_SOURCE_DIR}/src/ktablefs_ll.c"
     "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
@@ -136,12 +94,5 @@ else()
 endif()
 target_link_libraries(ktablefs_ll pthread fuse3)
 
-add_executable(ext4-fuse)
-target_sources(ext4-fuse
-  PRIVATE
-    "${PROJECT_SOURCE_DIR}/src/ext4_fuse.c"
-)
+add_executable(ext4-fuse "${PROJECT_SOURCE_DIR}/src/ext4_fuse.c")
 target_link_libraries(ext4-fuse pthread fuse3)
-
-add_executable(kfs_test "${PROJECT_SOURCE_DIR}/test/kfs_test.c")
-add_test(kfs_test kfs_test)
