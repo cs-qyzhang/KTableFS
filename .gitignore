@@ -60,4 +60,5 @@ script/*
 !script/*.py
 !script/*.f
 !script/*.sh
+!script/tablefs
 !latexmkrc
