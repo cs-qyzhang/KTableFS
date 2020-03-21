@@ -326,9 +326,9 @@ class Bench:
             write_item("Machine Type", self.machine);
 
             stream = os.popen("lscpu | grep 'Model name'");
-            cpu = stream.read()[33:-1].strip();
+            cpu = stream.read()[:-1].split(':')[-1].strip();
             stream = os.popen("lscpu | grep 'CPU(s):' | head -1");
-            core = stream.read()[33:-1].strip();
+            core = stream.read()[:-1].split(':')[-1].strip();
             write_item("CPU Model", cpu + ", " + core + " Core");
 
             stream = os.popen("lsmem | grep 'online memory'");
