@@ -61,4 +61,5 @@ script/*
 !script/*.f
 !script/*.sh
 !script/tablefs
+!script/ktablefs
 !latexmkrc
