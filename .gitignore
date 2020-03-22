@@ -61,5 +61,6 @@ script/*
 !script/*.f
 !script/*.sh
 !script/tablefs
+!script/tablefs-debian
 !script/ktablefs
 !latexmkrc

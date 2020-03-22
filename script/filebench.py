@@ -372,7 +372,7 @@ class Bench:
                         elif param == "nfiles":
                             nfiles = int(line.split()[-1].split('=')[1]);
                             magtitude = 0;
-                            while nfiles > 1000:
+                            while nfiles >= 1000:
                                 nfiles = nfiles // 1000;
                                 magtitude += 1;
                             write_item("Benchmark Number of File", str(nfiles) + ", 000" * magtitude);
