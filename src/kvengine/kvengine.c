@@ -101,7 +101,7 @@ void process_put_request(struct kv_batch* batch, struct thread_data* thread_data
     return;
   }
 
-  static __thread char item[512];
+  char *item = malloc(512);
   size_t item_size = kv_to_item(req->key, req->value, item);
   int slab_idx = slab_get_free_index(thread_data->slab);
 
@@ -147,7 +147,7 @@ void process_update_request(struct kv_batch* batch, struct thread_data* thread_d
 
   int slab_idx = (int)(uintptr_t)val - 1;
 
-  static __thread char item[512];
+  char *item = malloc(512);
   size_t item_size = kv_to_item(req->key, req->value, item);
 
   struct io_context* ctx = io_context_new(thread_data, batch, slab_idx);
@@ -171,14 +171,14 @@ void process_delete_request(struct kv_batch* batch, struct thread_data* thread_d
   int slab_idx = (int)(uintptr_t)val - 1;
 
   // only change item's valid to 0
-  static __thread int64_t item_valid;
-  item_valid = -1;
+  int64_t *item_valid = malloc(sizeof(*item_valid));
+  *item_valid = -1;
 
   struct io_context* ctx = io_context_new(thread_data, batch, slab_idx);
   io_context_insert_callback(ctx->do_at_io_wait, index_remove_wrapper);
   io_context_insert_callback(ctx->do_at_io_wait, slab_remove_item);
 
-  slab_write_item(thread_data->slab, slab_idx, &item_valid, sizeof(item_valid), ctx);
+  slab_write_item(thread_data->slab, slab_idx, item_valid, sizeof(*item_valid), ctx);
 }
 
 void scan_request_function(void* key, void* value, void** scan_arg) {
