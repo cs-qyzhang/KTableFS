@@ -29,6 +29,7 @@ class MknodCallback {
     else {
       fuse_entry_param e = handle_->FuseEntry();
       fuse_reply_entry(req_, &e);
+      KTableFS::IndexInsert(*handle_->key, handle_->file);
     }
   }
 };
@@ -38,9 +39,9 @@ void KTableFS::Mknod(fuse_req_t req, fuse_ino_t parent, const char* name,
   FileHandle* new_file = new FileHandle(File::REGULAR, mode);
   FileHandle* parent_handle = fs->Handle(req, parent);
 
-  FileKey key(parent_handle->Ino(), new Slice(name, strlen(name), true));
+  new_file->key = new FileKey(parent_handle->Ino(), new Slice(name, strlen(name), true));
   Batch batch;
-  batch.Put(key.ToSlice(), new_file->ToSlice());
+  batch.Put(new_file->key->ToSlice(), new_file->ToSlice());
   batch.AddCallback(MknodCallback(req, new_file));
   fs->db_->Submit(&batch);
 }

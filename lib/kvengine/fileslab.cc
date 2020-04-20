@@ -49,6 +49,21 @@ void FileSlab::Read(slab_t slab, AIO* aio) {
   file_set_.Read(slab.file, slab.size, slab.size * slab.index, aio);
 }
 
+void FileSlab::ReadSync(slab_t slab, Slice*& key, Slice*& value) {
+  Slice* s = file_set_.ReadSync(slab.file, slab.size, slab.size * slab.index);
+  char* data = const_cast<char*>(s->data());
+  uint16_t valid = *reinterpret_cast<uint16_t*>(data);
+  assert(FileSlab::Valid(valid));
+  data += sizeof(uint16_t);
+  uint16_t key_size = *reinterpret_cast<uint16_t*>(data);
+  data += sizeof(uint16_t);
+  uint16_t value_size = *reinterpret_cast<uint16_t*>(data);
+  data += sizeof(uint16_t);
+  key = new Slice(data, key_size);
+  data += key_size;
+  value = new Slice(data, value_size);
+}
+
 void FileSlab::Write(slab_t slab, const Slice* key, const Slice* value, AIO* aio) {
   uint16_t key_size = key->size();
   uint16_t value_size = value->size();

@@ -8,7 +8,6 @@
 #include "kvengine/slice.h"
 #include "kvengine/db.h"
 #include "kvengine/batch.h"
-#include "dbg.h"
 
 using kvengine::Batch;
 using kvengine::Respond;
@@ -42,6 +41,10 @@ class TestThread {
   condition_variable delete_cv;
   int delete_res;
   bool delete_ready;
+
+  mutex scan_mutex;
+  condition_variable scan_cv;
+  bool scan_ready;
 
   class GetCallback {
    private:
@@ -142,6 +145,51 @@ class TestThread {
     return delete_res;
   }
 
+  int count;
+
+  class ScanFunc {
+   private:
+    TestThread* t;
+   public:
+    ScanFunc(TestThread* t) : t(t) {}
+    bool operator()(Slice* key, Slice* value) {
+      int keyi = stoi(key->ToString());
+      int valuei = stoi(value->ToString());
+      assert(keyi == (valuei + 1));
+      t->count += keyi;
+      return true;
+    }
+  };
+
+  class ScanCallback {
+   private:
+    TestThread* t;
+    int begin;
+    int end;
+   public:
+    ScanCallback(TestThread* t, int b, int e) : t(t), begin(b), end(e) {}
+    void operator()(Respond* respond) {
+      int ans = 0;
+      for (int i = begin; i < end; ++i)
+        ans += i;
+      assert(ans == t->count);
+      lock_guard<mutex> lock(t->scan_mutex);
+      t->scan_ready = true;
+      t->scan_cv.notify_one();
+    }
+  };
+
+  void Scan(int begin, int end) {
+    count = 0;
+    Batch batch;
+    batch.Scan(to_string(begin), to_string(end), ScanFunc(this));
+    batch.AddCallback(ScanCallback(this, begin, end));
+    scan_ready = false;
+    db->Submit(&batch);
+    unique_lock<mutex> lock(scan_mutex);
+    scan_cv.wait(lock, [&]{ return scan_ready; });
+  }
+
   void Main(int begin, int end) {
     for (int i = begin; i < end; ++i) {
       Slice* res = Get(to_string(i));
@@ -168,6 +216,8 @@ class TestThread {
       assert(res && res->ToString() == to_string(i - 1));
     }
 
+    Scan(begin, end);
+
     for (int i = begin; i < end; i = i + 2) {
       int res = Delete(to_string(i));
       assert(res == 0);
@@ -192,7 +242,7 @@ class TestThread {
 };
 
 int main(void) {
-  int thread_num = 8;
+  int thread_num = 16;
   int total = 160000;
   int per_thread = total / thread_num;
 

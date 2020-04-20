@@ -18,7 +18,7 @@ void KTableFS::GetAttr(fuse_req_t req, fuse_ino_t ino,
 			                 struct fuse_file_info *fi) {
   FileHandle* handle = fs->Handle(req, ino);
   fuse_entry_param e = handle->FuseEntry();
-  fuse_reply_entry(req, &e);
+  fuse_reply_attr(req, &e.attr, KTableFS::timeout);
 }
 
 } // namespace ktablefs

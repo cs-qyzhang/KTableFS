@@ -16,8 +16,10 @@ using kvengine::Respond;
 
 void KTableFS::Open(fuse_req_t req, fuse_ino_t ino,
 		                struct fuse_file_info *fi) {
+  FileHandle* handle = fs->Handle(req, ino);
   fi->fh = ino;
   fuse_reply_open(req, fi);
+  KTableFS::IndexInsert(*handle->key, handle->file);
 }
 
 } // namespace ktablefs

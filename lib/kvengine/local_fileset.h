@@ -20,7 +20,6 @@ class LocalFileSet {
     std::string file_name;
 
     explicit LocalFile(std::string file_name, mode_t mode);
-    ~LocalFile() { Close(); }
 
     void Open();
     void Close();
@@ -45,6 +44,7 @@ class LocalFileSet {
   // @file_name relative to LocalFileSet::directory_
   file_t Open(std::string file_name);
   void Close(file_t file);
+  Slice* ReadSync(file_t file, size_t size, off_t off);
   void Read(file_t file, size_t size, off_t off, AIO* aio);
   void Write(file_t file, const Slice* data, off_t off, AIO* aio);
 };

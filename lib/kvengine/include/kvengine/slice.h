@@ -58,12 +58,12 @@ class Slice {
   }
 
   bool operator<(const Slice& b) const {
-    if (size_ < b.size_)
-      return true;
-    else if (size_ == b.size_)
-      return memcmp(data_, b.data_, size_) < 0;
-    else
-      return false;
+    const size_t min_len = (size_ < b.size_) ? size_ : b.size_;
+    int r = memcmp(data_, b.data_, min_len);
+    if (r == 0 && size_ < b.size_) {
+      r = -1;
+    }
+    return r < 0;
   }
 
   // Change this slice to refer to an empty array

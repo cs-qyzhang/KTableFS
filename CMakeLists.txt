@@ -93,6 +93,7 @@ add_executable(ktablefs
   "${FS_SRC}/read_write.cc"
   "${FS_SRC}/open.cc"
   "${FS_SRC}/attr.cc"
+  "${FS_SRC}/dir.cc"
 )
 target_link_libraries(ktablefs kvengine fuse3)
 

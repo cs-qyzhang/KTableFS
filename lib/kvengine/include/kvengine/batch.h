@@ -27,7 +27,7 @@ class Batch {
     Slice* min_key;
     Slice* max_key;
     Slice* value;
-    std::function<void(Slice*)> scan_callback;
+    std::function<bool(Slice*,Slice*)> scan_callback;
     Request()
       : key(nullptr), min_key(nullptr), max_key(nullptr), value(nullptr)
     {}
@@ -61,9 +61,9 @@ class Batch {
   void Delete(const Slice& key);
   void Delete(Slice* key);
   void Scan(const Slice& min_key, const Slice& max_key,
-            std::function<void(Slice*)> scan_callback);
+            std::function<bool(Slice*,Slice*)> scan_callback);
   void Scan(Slice* min_key, Slice* max_key,
-            std::function<void(Slice*)> scan_callback);
+            std::function<bool(Slice*,Slice*)> scan_callback);
   void AddCallback(std::function<void(Respond*)> callback);
 };
 

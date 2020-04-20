@@ -86,7 +86,7 @@ void Batch::Delete(Slice* key) {
 }
 
 void Batch::Scan(const Slice& min_key, const Slice& max_key,
-                 std::function<void(Slice*)> scan_callback) {
+                 std::function<bool(Slice*,Slice*)> scan_callback) {
   Request* req(new Request);
   req->type = Request::ReqType::SCAN;
   req->min_key = new Slice(min_key);
@@ -96,12 +96,12 @@ void Batch::Scan(const Slice& min_key, const Slice& max_key,
 }
 
 void Batch::Scan(Slice* min_key, Slice* max_key,
-                 std::function<void(Slice*)> scan_callback) {
+                 std::function<bool(Slice*,Slice*)> scan_callback) {
   Request* req(new Request);
   req->type = Request::ReqType::SCAN;
   req->min_key = min_key;
   req->max_key = max_key;
-  req->scan_callback = std::move(scan_callback);
+  req->scan_callback = scan_callback;
   requests_.push_back(req);
 }
 
@@ -111,7 +111,11 @@ void Batch::AddCallback(std::function<void(Respond*)> callback) {
 
 std::ostream &operator<<(std::ostream &os, const Batch& b) {
   for (auto& req : b.requests_) {
-    os << static_cast<int>(req->type) << " " << req->key->ToString() << " " << std::endl;
+    if (req->type != Batch::Request::ReqType::SCAN)
+      os << static_cast<int>(req->type) << " " << req->key->ToString() << std::endl;
+    else
+      os << static_cast<int>(req->type) << " " << req->min_key->ToString()
+         << " " << req->max_key->ToString() << std::endl;
   }
   return os;
 }

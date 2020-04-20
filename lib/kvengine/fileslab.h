@@ -53,6 +53,7 @@ class FileSlab {
 
   static bool Valid(uint16_t valid) { return valid == VALID; }
   slab_t Create(const Slice* key, const Slice* value);
+  void ReadSync(slab_t slab, Slice*& key, Slice*& value);
   void Read(slab_t slab, AIO* aio);
   void Write(slab_t slab, const Slice* key, const Slice* value, AIO* aio);
   void Delete(slab_t slab, AIO* aio);

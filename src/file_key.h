@@ -18,6 +18,30 @@ struct FileKey {
   FileKey(const Slice*);
 
   Slice* ToSlice();
+
+  bool operator<(const FileKey& b) const {
+    if (dir_ino < b.dir_ino) {
+      return true;
+    } else if (dir_ino == b.dir_ino) {
+      if (hash < b.hash)
+        return true;
+      else if (hash == b.hash)
+        return *name < *b.name;
+      else
+        return false;
+    } else {
+      return false;
+    }
+  }
+
+  bool operator==(const FileKey& b) const {
+    return (dir_ino == b.dir_ino && hash == b.hash && *name == *b.name);
+  }
+
+  bool operator!=(const FileKey& b) const {
+    return !operator==(b);
+  }
+
 };
 
 } // namespace ktablefs

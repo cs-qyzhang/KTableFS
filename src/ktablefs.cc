@@ -4,6 +4,7 @@
 #include "kvengine/db.h"
 #include "ktablefs.h"
 #include "file.h"
+#include "file_key.h"
 #include "file_data.h"
 
 namespace ktablefs {
@@ -37,9 +38,14 @@ KTableFS::KTableFS(std::string data_dir)
 
   file_data_ = new FileData(data_dir_);
   root_ = new FileHandle();
-  root_->file_.st_ino = FUSE_ROOT_ID;
-  root_->file_.st_mode = stat_buf.st_mode;
-  root_->file_.type = File::REGULAR;
+  root_->file->st_ino = FUSE_ROOT_ID;
+  root_->file->st_mode = stat_buf.st_mode;
+  root_->file->type = File::REGULAR;
+  root_->file->atime = stat_buf.st_atime;
+  root_->file->mtime = stat_buf.st_mtime;
+  root_->file->st_nlink = stat_buf.st_nlink;
+  root_->file->st_size = stat_buf.st_size;
+  root_->key = new FileKey(FUSE_ROOT_ID, new Slice("/"));
   root_->UpdateATime();
   root_->UpdateMTime();
 }

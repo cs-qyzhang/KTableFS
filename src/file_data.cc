@@ -66,7 +66,7 @@ aggr_t FileData::Create() {
 }
 
 void FileData::Delete(FileHandle* handle) {
-  File* file = &handle->file_;
+  File* file = handle->file;
   aggr_free_.emplace_back(file->aggr);
   auto iter = large_files_.find(file->st_ino);
   if (iter != large_files_.end()) {
@@ -76,7 +76,7 @@ void FileData::Delete(FileHandle* handle) {
 }
 
 Slice* FileData::Read(FileHandle* handle, size_t size, size_t off) {
-  File* file = &handle->file_;
+  File* file = handle->file;
   if (size + off <= aggr_block_size_) {
     return aggr_files_[file->aggr.file - 1].Read(size, file->aggr.no * aggr_block_size_ + off);
   } else if (off >= aggr_block_size_) {
@@ -106,10 +106,10 @@ Slice* FileData::Read(FileHandle* handle, size_t size, size_t off) {
 
 // Update File Size
 ssize_t FileData::Write(FileHandle* handle, const Slice* data, size_t off) {
-  File* file = &handle->file_;
+  File* file = handle->file;
   size_t size = data->size();
   if (size + off <= aggr_block_size_) {
-    return aggr_files_[file->aggr.file - 1].Write(data, off);
+    return aggr_files_[file->aggr.file - 1].Write(data, file->aggr.no * aggr_block_size_ + off);
   } else if (off >= aggr_block_size_) {
     auto iter = large_files_.find(file->st_ino);
     if (iter != large_files_.end()) {
@@ -125,7 +125,7 @@ ssize_t FileData::Write(FileHandle* handle, const Slice* data, size_t off) {
     Slice* aggr_data = new Slice(data->data(), aggr_block_size_ - off);
     Slice* large_data = new Slice(data->data() + (aggr_block_size_ - off),
         size - (aggr_block_size_ - off));
-    res += aggr_files_[file->aggr.file - 1].Write(aggr_data, off);
+    res += aggr_files_[file->aggr.file - 1].Write(aggr_data, file->aggr.no * aggr_block_size_ + off);
 
     auto iter = large_files_.find(file->st_ino);
     if (iter != large_files_.end()) {

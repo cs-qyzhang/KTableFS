@@ -67,6 +67,21 @@ void LocalFileSet::Close(file_t file) {
   file_set_[file - 1].Close();
 }
 
+Slice* LocalFileSet::ReadSync(file_t file, size_t size, off_t off) {
+  file_set_[file - 1].Open();
+  int page_index = off / PageCache::PAGE_SIZE;
+  PageCache::Entry* ent = pagecache_.Lookup(PageHash_(file, page_index));
+  if (ent == nullptr) {
+    ent = pagecache_.NewEntry(PageHash_(file, page_index));
+    ssize_t cnt = pread(file_set_[file - 1].fd, ent->page,
+        PageCache::PAGE_SIZE, PageCache::PAGE_SIZE * page_index);
+    assert(cnt > 0);
+    ent->wait = false;
+  }
+  Slice* res = new Slice(ent->page + (off % PageCache::PAGE_SIZE), size, true);
+  return res;
+}
+
 void LocalFileSet::Read(file_t file, size_t size, off_t off, AIO* aio) {
   file_set_[file - 1].Open();
 

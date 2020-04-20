@@ -50,15 +50,23 @@ bool DB::Open(std::string work_dir, bool create, int thread_num) {
 
 void DB::Submit(Batch* batch, bool cp) {
   if (cp) {
-    Batch* b = new Batch(*batch);
-    b->db_ = this;
-    Slice* key = b->requests_.front()->key;
-    int thread_idx = split_func_(key, workers_.size());
-    workers_[thread_idx]->Submit(b);
-    batch->Clear();
+    Batch* old = batch;
+    batch = new Batch(*old);
+    old->Clear();
+  }
+  batch->db_ = this;
+  auto req = batch->requests_.front();
+  if (req->type == Batch::Request::ReqType::SCAN) {
+    int thread_idx = reinterpret_cast<uintptr_t>(req->key);
+    if (thread_idx == 0) {
+      for (unsigned int i = 1; i < workers_.size(); ++i) {
+        batch->Scan(req->min_key, req->max_key, req->scan_callback);
+        batch->requests_.back()->key = reinterpret_cast<Slice*>(i);
+      }
+    }
+    workers_[thread_idx]->Submit(batch);
   } else {
-    batch->db_ = this;
-    Slice* key = batch->requests_.front()->key;
+    Slice* key = req->key;
     int thread_idx = split_func_(key, workers_.size());
     workers_[thread_idx]->Submit(batch);
   }

@@ -1,6 +1,7 @@
 #include <thread>
 #include <filesystem>
 #include <queue>
+#include <algorithm>
 #include "kvengine/batch.h"
 #include "worker.h"
 #include "aio.h"
@@ -72,6 +73,8 @@ void Worker::ProcessRequest_(Batch* batch) {
   std::map<Slice,slab_t>::iterator slab_iter;
   slab_t slab_idx;
   AIO* aio;
+  Slice* key;
+  Slice* value;
   switch (req->type) {
     case Batch::Request::ReqType::GET:
       slab_iter = index_.find(*req->key);
@@ -113,7 +116,19 @@ void Worker::ProcessRequest_(Batch* batch) {
       slab_.Delete(slab_iter->second, aio);
       break;
     case Batch::Request::ReqType::SCAN:
+      slab_iter = index_.lower_bound(*req->min_key);
+      while (slab_iter != index_.end() && slab_iter->first < *req->max_key) {
+        slab_.ReadSync(slab_iter->second, key, value);
+        if (!req->scan_callback(key, value)) {
+          batch->requests_.clear();
+          batch->FinishRequest(nullptr, -1);
+        }
+        slab_iter++;
+      }
+      batch->FinishRequest(nullptr, 0);
       break;
+    default:
+      assert(0);
   }
 }
 

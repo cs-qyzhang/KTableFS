@@ -10,6 +10,7 @@
 namespace ktablefs {
 
 class KTableFS;
+class FileKey;
 
 // Plain Old Data, 32 byte
 struct File {
@@ -19,14 +20,14 @@ struct File {
 
   union {
     struct {
-      uint8_t type;
-      uint8_t st_nlink;
-      uint16_t st_mode;
+      uint32_t type     : 4;
+      uint32_t st_nlink : 8;
+      uint32_t st_mode  : 20;
       aggr_t aggr;
       uint32_t atime;
       uint32_t mtime; // remove ctime (simply make ctime == atime)
-      ino_t st_ino;
-      off_t st_size;
+      uint64_t st_ino;
+      uint64_t st_size;
     };
     struct {
       uint8_t _;
@@ -36,27 +37,31 @@ struct File {
   };
 };
 
+static_assert(sizeof(File) == 32);
+
 class FileHandle {
- private:
-  File file_;
-
-  friend class KTableFS;
-  friend class FileData;
-
  public:
+  File* file;
+  FileKey* key;
+
   FileHandle();
-  FileHandle(const kvengine::Slice*);
+  FileHandle(File* f, FileKey* k) : file(f), key(k) {}
+  FileHandle(const kvengine::Slice*, FileKey* key);
   FileHandle(uint8_t, mode_t);
-  fuse_entry_param FuseEntry();
-  Slice* ToSlice();
 
-  void UpdateMTime() { file_.mtime = time(NULL); }
-  void UpdateATime() { file_.atime = time(NULL); }
-  ino_t Ino() { return file_.st_ino; }
+  fuse_entry_param FuseEntry() const;
+  Slice* ToSlice() const;
 
-  bool IsRegular() { return (file_.type & File::REGULAR); }
-  bool IsSymlink() { return (file_.type & File::SYMLINK); }
-  bool IsHardlink() { return (file_.type & File::HARDLINK); }
+  void SetKey(FileKey* key) { key = key; }
+  void SetFile(File* file) { file = file; }
+
+  void UpdateMTime() { file->mtime = time(NULL); }
+  void UpdateATime() { file->atime = time(NULL); }
+  ino_t Ino() const { return file->st_ino; }
+
+  bool IsRegular() const { return (file->type & File::REGULAR); }
+  bool IsSymlink() const { return (file->type & File::SYMLINK); }
+  bool IsHardlink() const { return (file->type & File::HARDLINK); }
 };
 
 } // namespace ktablefs
