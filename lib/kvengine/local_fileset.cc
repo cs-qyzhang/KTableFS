@@ -36,7 +36,7 @@ void LocalFileSet::LocalFile::Close() {
 }
 
 LocalFileSet::LocalFileSet(std::string directory)
-  : directory_(directory), pagecache_(8192)
+  : directory_(directory), pagecache_(1024*128)
 {
   // valid directory, remove last '/'
   // TODO: stat()..

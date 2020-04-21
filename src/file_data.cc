@@ -24,13 +24,10 @@ void FileData::LocalFile::Close() {
     close(fd);
 }
 
-Slice* FileData::LocalFile::Read(size_t size, size_t off) {
+ssize_t FileData::LocalFile::Read(char* buf, size_t size, size_t off) {
   if (fd < 0)
     Open();
-  char* buf = new char[size];
-  ssize_t res = pread(fd, buf, size, off);
-  assert(res >= 0);
-  return new Slice(buf, res);
+  return pread(fd, buf, size, off);
 }
 
 void FileData::LocalFile::Delete() {
@@ -75,32 +72,69 @@ void FileData::Delete(FileHandle* handle) {
   }
 }
 
-Slice* FileData::Read(FileHandle* handle, size_t size, size_t off) {
+ssize_t FileData::Read(FileHandle* handle, char* buf, size_t size, size_t off) {
   File* file = handle->file;
   if (size + off <= aggr_block_size_) {
-    return aggr_files_[file->aggr.file - 1].Read(size, file->aggr.no * aggr_block_size_ + off);
+    // read aggregation file
+    return aggr_files_[file->aggr.file - 1].Read(buf, size, file->aggr.no * aggr_block_size_ + off);
   } else if (off >= aggr_block_size_) {
+    // read large file
+    auto iter = large_files_.find(file->st_ino);
+    if (iter != large_files_.end())
+      return iter->second.Read(buf, size, off - aggr_block_size_);
+    else
+      return 0;
+  } else {
+    // read both aggregation file and large file
+    ssize_t res = aggr_files_[file->aggr.file - 1].Read(buf, aggr_block_size_ - off,
+        file->aggr.no * aggr_block_size_ + off);
+    assert(res > 0);
+    auto iter = large_files_.find(file->st_ino);
+    if (iter != large_files_.end())
+      res += iter->second.Read(buf + res, size - (aggr_block_size_ - off), 0);
+    return res;
+  }
+}
+
+void FileData::ReadBuf(FileHandle* handle, fuse_bufvec* bufvec,
+                       size_t size, size_t off) {
+  File* file = handle->file;
+  if (size + off <= aggr_block_size_) {
+    // read aggregation file
+    *bufvec = FUSE_BUFVEC_INIT(size);
+    bufvec->buf[0].flags = static_cast<fuse_buf_flags>(FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK);
+    bufvec->buf[0].fd = aggr_files_[file->aggr.file - 1].fd;
+    bufvec->buf[0].pos = file->aggr.no * aggr_block_size_ + off;
+  } else if (off >= aggr_block_size_) {
+    // read large file
+    *bufvec = FUSE_BUFVEC_INIT(0);
     auto iter = large_files_.find(file->st_ino);
     if (iter != large_files_.end()) {
-      return iter->second.Read(size, off - aggr_block_size_);
-    } else {
-      return new Slice(nullptr, 0);
+      bufvec->buf[0].flags = static_cast<fuse_buf_flags>(FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK);
+      bufvec->buf[0].fd = iter->second.fd;
+      bufvec->buf[0].pos = off - aggr_block_size_;
+      bufvec->buf[0].size = size;
     }
   } else {
-    Slice* aggr_data = aggr_files_[file->aggr.file - 1].Read(aggr_block_size_ - off,
-        file->aggr.no * aggr_block_size_ + off);
     auto iter = large_files_.find(file->st_ino);
-    Slice* large_data;
-    if (iter != large_files_.end())
-      large_data = iter->second.Read(size - (aggr_block_size_ - off), 0);
-    else
-      large_data = new Slice(nullptr, 0);
-    Slice* res;
-    char* buf = new char[aggr_data->size() + large_data->size()];
-    memcpy(buf, aggr_data->data(), aggr_data->size());
-    memcpy(buf + aggr_data->size(), large_data->data(), large_data->size());
-    res = new Slice(buf, aggr_data->size() + large_data->size());
-    return res;
+    if (iter != large_files_.end()) {
+      bufvec->count = 2;
+      bufvec->idx = 0;
+      bufvec->off = 0;
+      bufvec->buf[0].flags = static_cast<fuse_buf_flags>(FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK);
+      bufvec->buf[0].fd = aggr_files_[file->aggr.file - 1].fd;
+      bufvec->buf[0].pos = file->aggr.no * aggr_block_size_ + off;
+      bufvec->buf[0].size = aggr_block_size_ - off;
+      bufvec->buf[1].flags = static_cast<fuse_buf_flags>(FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK);
+      bufvec->buf[1].fd = iter->second.fd;
+      bufvec->buf[1].pos = 0;
+      bufvec->buf[1].size = size - (aggr_block_size_ - off);
+    } else {
+      *bufvec = FUSE_BUFVEC_INIT(aggr_block_size_ - off);
+      bufvec->buf[0].flags = static_cast<fuse_buf_flags>(FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK);
+      bufvec->buf[0].fd = aggr_files_[file->aggr.file - 1].fd;
+      bufvec->buf[0].pos = file->aggr.no * aggr_block_size_ + off;
+    }
   }
 }
 

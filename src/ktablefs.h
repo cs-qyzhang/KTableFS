@@ -89,6 +89,8 @@ class KTableFS {
 		                size_t size, off_t off, struct fuse_file_info *fi);
 	static void Read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 		               struct fuse_file_info *fi);
+	static void ReadBuf(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
+		                  struct fuse_file_info *fi);
   static void GetAttr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi);
 
   static void Init(void *userdata, struct fuse_conn_info *conn);

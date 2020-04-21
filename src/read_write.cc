@@ -17,15 +17,23 @@ using kvengine::Respond;
 void KTableFS::Read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
                     struct fuse_file_info *fi) {
   FileHandle* handle = fs->Handle(req, ino);
-  Slice* res = fs->file_data_->Read(handle, size, off);
-  if (res) {
-    int err = fuse_reply_buf(req, res->data(), res->size());
+  char buf[size];
+  ssize_t res = fs->file_data_->Read(handle, buf, size, off);
+  if (res >= 0) {
+    int err = fuse_reply_buf(req, buf, res);
     assert(err == 0);
-    delete[] res->data();
-    delete res;
   } else {
     assert(0);
   }
+}
+
+void KTableFS::ReadBuf(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
+                    struct fuse_file_info *fi) {
+  FileHandle* handle = fs->Handle(req, ino);
+  char buf[sizeof(fuse_bufvec) + sizeof(fuse_buf)];
+  fuse_bufvec* bufvec = reinterpret_cast<fuse_bufvec*>(buf);
+  fs->file_data_->ReadBuf(handle, bufvec, size, off);
+  fuse_reply_data(req, bufvec, FUSE_BUF_SPLICE_MOVE);
 }
 
 class WriteCallback {
