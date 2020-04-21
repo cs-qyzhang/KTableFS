@@ -20,12 +20,8 @@ void Batch::FinishRequest(Slice* val, int res) {
 }
 
 void Batch::Clear() {
-  Request* req;
-  while (!requests_.empty()) {
-    req = requests_.front();
+  while (!requests_.empty())
     requests_.pop_front();
-    delete req;
-  }
   callback_ = nullptr;
 }
 
