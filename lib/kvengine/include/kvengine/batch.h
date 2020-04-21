@@ -31,7 +31,12 @@ class Batch {
     Request()
       : key(nullptr), min_key(nullptr), max_key(nullptr), value(nullptr)
     {}
-    ~Request() {}
+    ~Request() {
+      if (key) delete key;
+      if (min_key) delete min_key;
+      if (max_key) delete max_key;
+      if (value) delete value;
+    }
   };
 
   std::deque<Request*> requests_;
@@ -49,7 +54,6 @@ class Batch {
  public:
   Batch() {}
   Batch(const Batch& batch);
-  ~Batch() {}
 
   void Clear();
   void Get(const Slice& key);

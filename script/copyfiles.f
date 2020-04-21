@@ -24,11 +24,11 @@
 #
 
 set $dir=/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/mount
-set $nfiles=5000
+set $nfiles=500000
 set $meandirwidth=20
 set $meanfilesize=4k
 set $iosize=1m
-set $nthreads=1
+set $nthreads=8
 
 set mode quit firstdone
 

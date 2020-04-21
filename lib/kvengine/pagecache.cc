@@ -30,9 +30,16 @@ void PageCache::Update_(Entry* ent) {
     ent->prev = nullptr;
     ent->next = nullptr;
   } else {
+    if (ent == newest_)
+      return;
+    if (ent == oldest_) {
+      oldest_ = ent->prev;
+      oldest_->next = nullptr;
+    }
     ent->next = newest_;
     ent->prev = nullptr;
     newest_->prev = ent;
+    newest_ = ent;
   }
 }
 

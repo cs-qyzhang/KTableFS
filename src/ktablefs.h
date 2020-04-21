@@ -60,7 +60,7 @@ class KTableFS {
   KTableFS(KTableFS&&) = delete;
 
   static void IndexInsert(const FileKey& key, File* file) {
-    fs->open_file_.emplace(key, file);
+    // fs->open_file_.emplace(key, file);
   }
   static void IndexErase(const FileKey& key) {
     fs->open_file_.erase(key);

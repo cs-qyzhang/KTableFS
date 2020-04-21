@@ -20,12 +20,12 @@ slab_t FileSlab::Create(const Slice* key, const Slice* value) {
       } else {
         slab.cur_slab++;
       }
+      slab_t res;
+      res.size = slab.slab_size;
+      res.index = slab.cur_slab;
+      res.file = slab.cur_file;
+      return res;
     }
-    slab_t res;
-    res.size = slab.slab_size;
-    res.index = slab.cur_slab;
-    res.file = slab.cur_file;
-    return res;
   }
   throw "ERROR in FileSlab::Create(): size to large!";
 }

@@ -29,7 +29,7 @@ Slice* FileData::LocalFile::Read(size_t size, size_t off) {
     Open();
   char* buf = new char[size];
   ssize_t res = pread(fd, buf, size, off);
-  assert(res > 0);
+  assert(res >= 0);
   return new Slice(buf, res);
 }
 

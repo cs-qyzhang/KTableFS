@@ -21,10 +21,10 @@ double KTableFS::timeout;
 KTableFS* KTableFS::fs;
 
 KTableFS::KTableFS(std::string data_dir)
-  : data_dir_(data_dir), cur_ino_(FUSE_ROOT_ID)
+  : data_dir_("/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/datadir"), cur_ino_(FUSE_ROOT_ID)
 {
   db_ = new DB();
-  db_->Open(data_dir_ + "/DB", true, 1);
+  db_->Open(data_dir_ + "/DB", true, 4);
 
   struct stat stat_buf;
   int res = stat(data_dir_.c_str(), &stat_buf);
@@ -51,7 +51,7 @@ KTableFS::KTableFS(std::string data_dir)
 }
 
 void KTableFS::Init(void *userdata, struct fuse_conn_info *conn) {
-  fs = new KTableFS(option.datadir);
+  fs = new KTableFS("");
 }
 
 void KTableFS::Destroy(void *userdata) {

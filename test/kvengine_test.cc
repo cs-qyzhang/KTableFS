@@ -156,7 +156,7 @@ class TestThread {
       int keyi = stoi(key->ToString());
       int valuei = stoi(value->ToString());
       assert(keyi == (valuei + 1));
-      t->count += keyi;
+      t->count += 1;
       return true;
     }
   };
@@ -169,10 +169,7 @@ class TestThread {
    public:
     ScanCallback(TestThread* t, int b, int e) : t(t), begin(b), end(e) {}
     void operator()(Respond* respond) {
-      int ans = 0;
-      for (int i = begin; i < end; ++i)
-        ans += i;
-      assert(ans == t->count);
+      assert((end - begin) == t->count);
       lock_guard<mutex> lock(t->scan_mutex);
       t->scan_ready = true;
       t->scan_cv.notify_one();
