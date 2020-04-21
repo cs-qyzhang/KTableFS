@@ -36,7 +36,7 @@ void LocalFileSet::LocalFile::Close() {
 }
 
 LocalFileSet::LocalFileSet(std::string directory)
-  : directory_(directory), pagecache_(4096)
+  : directory_(directory), pagecache_(8192)
 {
   // valid directory, remove last '/'
   // TODO: stat()..
@@ -78,8 +78,7 @@ Slice* LocalFileSet::ReadSync(file_t file, size_t size, off_t off) {
     assert(cnt > 0);
     ent->wait = false;
   }
-  Slice* res = new Slice(ent->page + (off % PageCache::PAGE_SIZE), size, true);
-  return res;
+  return new Slice(ent->page + (off % PageCache::PAGE_SIZE), size, true);
 }
 
 void LocalFileSet::Read(file_t file, size_t size, off_t off, AIO* aio) {
@@ -114,6 +113,8 @@ void LocalFileSet::Write(file_t file, const Slice* data,
   if (ent) {
     aio->AddCallback(pagecache_.MakeWriteCallback(ent, data,
                      off % PageCache::PAGE_SIZE));
+  } else {
+    delete data;
   }
   aio->Submit();
 }

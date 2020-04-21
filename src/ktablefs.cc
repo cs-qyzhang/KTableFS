@@ -50,6 +50,14 @@ KTableFS::KTableFS(std::string data_dir)
   root_->UpdateMTime();
 }
 
+KTableFS::~KTableFS() {
+  delete db_;
+  delete file_data_;
+  delete root_->file;
+  delete root_->key;
+  delete root_;
+}
+
 void KTableFS::Init(void *userdata, struct fuse_conn_info *conn) {
   fs = new KTableFS("");
 }

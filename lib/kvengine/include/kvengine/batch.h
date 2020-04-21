@@ -32,10 +32,22 @@ class Batch {
       : key(nullptr), min_key(nullptr), max_key(nullptr), value(nullptr)
     {}
     ~Request() {
-      if (key) delete key;
-      if (min_key) delete min_key;
-      if (max_key) delete max_key;
-      if (value) delete value;
+      if (reinterpret_cast<uintptr_t>(key) > 0x10000U) {
+        delete[] key->data();
+        delete key;
+      }
+      if (min_key) {
+        delete[] min_key->data();
+        delete min_key;
+      }
+      if (max_key) {
+        delete[] max_key->data();
+        delete max_key;
+      }
+      if (value) {
+        delete[] value->data();
+        delete value;
+      }
     }
   };
 

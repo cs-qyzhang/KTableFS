@@ -18,6 +18,11 @@ using namespace std;
 
 DB* db;
 
+string ToString(int i, int width = 8) {
+  string res = to_string(i);
+  return string(width - res.size(), '0').append(res);
+}
+
 class TestThread {
  private:
   thread t_;
@@ -155,7 +160,7 @@ class TestThread {
     bool operator()(Slice* key, Slice* value) {
       int keyi = stoi(key->ToString());
       int valuei = stoi(value->ToString());
-      assert(keyi == (valuei + 1));
+      assert(keyi == (valuei - 2));
       t->count += 1;
       return true;
     }
@@ -179,7 +184,7 @@ class TestThread {
   void Scan(int begin, int end) {
     count = 0;
     Batch batch;
-    batch.Scan(to_string(begin), to_string(end), ScanFunc(this));
+    batch.Scan(ToString(begin), ToString(end), ScanFunc(this));
     batch.AddCallback(ScanCallback(this, begin, end));
     scan_ready = false;
     db->Submit(&batch);
@@ -189,45 +194,45 @@ class TestThread {
 
   void Main(int begin, int end) {
     for (int i = begin; i < end; ++i) {
-      Slice* res = Get(to_string(i));
+      Slice* res = Get(ToString(i));
       assert(res == nullptr);
     }
 
     for (int i = begin; i < end; ++i) {
-      int res = Put(to_string(i), to_string(i + 1));
+      int res = Put(ToString(i), ToString(i + 1));
       assert(res == 0);
     }
 
     for (int i = begin; i < end; ++i) {
-      Slice* res = Get(to_string(i));
-      assert(res && res->ToString() == to_string(i + 1));
+      Slice* res = Get(ToString(i));
+      assert(res && res->ToString() == ToString(i + 1));
     }
 
     for (int i = begin; i < end; ++i) {
-      int res = Update(to_string(i), to_string(i - 1));
+      int res = Update(ToString(i), ToString(i + 2));
       assert(res == 0);
     }
 
     for (int i = begin; i < end; ++i) {
-      Slice* res = Get(to_string(i));
-      assert(res && res->ToString() == to_string(i - 1));
+      Slice* res = Get(ToString(i));
+      assert(res && res->ToString() == ToString(i + 2));
     }
 
     Scan(begin, end);
 
     for (int i = begin; i < end; i = i + 2) {
-      int res = Delete(to_string(i));
+      int res = Delete(ToString(i));
       assert(res == 0);
     }
 
     for (int i = begin; i < end; i = i + 2) {
-      Slice* res = Get(to_string(i));
+      Slice* res = Get(ToString(i));
       assert(res == nullptr);
     }
 
     for (int i = begin + 1; i < end; i = i + 2) {
-      Slice* res = Get(to_string(i));
-      assert(res && res->ToString() == to_string(i - 1));
+      Slice* res = Get(ToString(i));
+      assert(res && res->ToString() == ToString(i + 2));
     }
   }
 

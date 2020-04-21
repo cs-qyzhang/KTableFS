@@ -33,6 +33,7 @@ class AIO {
   explicit AIO(Batch* batch)
     : iocb_(new iocb()), event_(nullptr), batch_(batch)
   { iocb_->aio_data = reinterpret_cast<uintptr_t>(this); }
+  ~AIO() { delete iocb_; }
 
   void AddCallback(std::function<void(AIO*)> callback) { callbacks_.push_back(callback); }
   void SetOpcode(int opcode) { iocb_->aio_lio_opcode = opcode; }

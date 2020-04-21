@@ -44,6 +44,8 @@ void AIO::Finish() {
     Slice* data = new Slice(read_buf + read_off_, read_size_, true);
     batch_->FinishRequest(data, Success() ? 0 : event_->res);
   } else if (iocb_->aio_lio_opcode == IOCB_CMD_PWRITE) {
+    char* buf = GetBuf();
+    delete[] buf;
     batch_->FinishRequest(nullptr, Success() ? 0 : event_->res);
   } else {
     throw "ERROR in AIO::Finish(): unknown iocb opcode!";

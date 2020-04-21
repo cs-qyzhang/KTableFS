@@ -94,6 +94,7 @@ PageCache::Entry* PageCache::Lookup(uint64_t hash) {
 void PageCache::WriteCallback::operator()(AIO* aio) {
   if (aio->Success()) {
     std::memcpy(ent_->page + off_, data_->data(), data_->size());
+    delete data_;
   } else {
     assert(0);
   }

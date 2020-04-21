@@ -60,7 +60,8 @@ void DB::Submit(Batch* batch, bool cp) {
     int thread_idx = reinterpret_cast<uintptr_t>(req->key);
     if (thread_idx == 0) {
       for (unsigned int i = 1; i < workers_.size(); ++i) {
-        batch->Scan(req->min_key, req->max_key, req->scan_callback);
+        batch->Scan(new Slice(*req->min_key, true),
+            new Slice(*req->max_key, true), req->scan_callback);
         batch->requests_.back()->key = reinterpret_cast<Slice*>(i);
       }
     }

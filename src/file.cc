@@ -12,13 +12,12 @@ FileHandle::FileHandle(const kvengine::Slice* s, FileKey* file_key)
   : key(file_key)
 {
   char* p = const_cast<char*>(s->data());
-  file = new File();
-  file->type = *reinterpret_cast<uint8_t*>(p);
-  if (IsSymlink() && IsRegular()) {
+  uint8_t type = *reinterpret_cast<uint8_t*>(p);
+  if ((type & File::REGULAR) && (type & File::SYMLINK)) {
 
   } else {
     assert(s->size() == sizeof(*file));
-    memcpy(file, p, sizeof(*file));
+    file = reinterpret_cast<File*>(p);
   }
 }
 

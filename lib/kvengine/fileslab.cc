@@ -59,9 +59,11 @@ void FileSlab::ReadSync(slab_t slab, Slice*& key, Slice*& value) {
   data += sizeof(uint16_t);
   uint16_t value_size = *reinterpret_cast<uint16_t*>(data);
   data += sizeof(uint16_t);
-  key = new Slice(data, key_size);
+  key = new Slice(data, key_size, true);
   data += key_size;
-  value = new Slice(data, value_size);
+  value = new Slice(data, value_size, true);
+  delete[] s->data();
+  delete s;
 }
 
 void FileSlab::Write(slab_t slab, const Slice* key, const Slice* value, AIO* aio) {

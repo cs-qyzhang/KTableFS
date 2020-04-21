@@ -46,7 +46,6 @@ class ThreadsafeQueue {
   void WaitData() {
     std::unique_lock<std::mutex> lock(m_);
     data_cond.wait(lock, [&]{ return !queue_.empty(); });
-    return;
   }
 
   std::shared_ptr<T> TryPop() {

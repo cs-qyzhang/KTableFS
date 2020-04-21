@@ -76,6 +76,9 @@ class ReadDirScan {
     size_t entsize;
     FileKey* file_key = new FileKey(key);
     FileHandle handle(value, file_key);
+    delete[] key->data();
+    delete key;
+    delete value;
     fuse_entry_param e = handle.FuseEntry();
     size_t remain = total_size - *buf_size;
     if (plus) {
@@ -99,14 +102,17 @@ class ReadDirCallback {
   fuse_req_t req;
   char* buf;
   size_t* buf_size;
+  off_t* cur_off;
 
  public:
-  ReadDirCallback(fuse_req_t req, char* buf, size_t* buf_size)
-    : req(req), buf(buf), buf_size(buf_size) {}
+  ReadDirCallback(fuse_req_t req, char* buf, size_t* buf_size, off_t* cur_off)
+    : req(req), buf(buf), buf_size(buf_size), cur_off(cur_off) {}
 
   void operator()(Respond* respond) {
     fuse_reply_buf(req, buf, *buf_size);
     delete buf_size;
+    delete cur_off;
+    delete[] buf;
   }
 };
 
@@ -126,7 +132,7 @@ void KTableFS::ReadDir_(fuse_req_t req, fuse_ino_t ino, size_t size,
 
   Batch batch;
   batch.Scan(min_key.ToSlice(), max_key.ToSlice(), ReadDirScan(req, buf, size, buf_size, off, cur_off, plus));
-  batch.AddCallback(ReadDirCallback(req, buf, buf_size));
+  batch.AddCallback(ReadDirCallback(req, buf, buf_size, cur_off));
   fs->db_->Submit(&batch);
 }
 

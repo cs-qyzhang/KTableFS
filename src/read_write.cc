@@ -21,6 +21,7 @@ void KTableFS::Read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
   if (res) {
     int err = fuse_reply_buf(req, res->data(), res->size());
     assert(err == 0);
+    delete[] res->data();
     delete res;
   } else {
     assert(0);
@@ -46,7 +47,9 @@ class WriteCallback {
 void KTableFS::Write(fuse_req_t req, fuse_ino_t ino, const char *buf,
 		                 size_t size, off_t off, struct fuse_file_info *fi) {
   FileHandle* handle = fs->Handle(req, ino);
-  ssize_t res = fs->file_data_->Write(handle, new Slice(buf, size), off);
+  Slice* data = new Slice(buf, size);
+  ssize_t res = fs->file_data_->Write(handle, data, off);
+  delete data;
   if (res > 0) {
     if (size + off > handle->file->st_size) {
       // Update File Size

@@ -36,13 +36,12 @@ class PutCallback {
 
  public:
   PutCallback(std::map<Slice, slab_t>* index, const Slice* key, slab_t slab)
-    : index_(index), key_(key->data(), key->size()), slab_idx_(slab)
-  {
-  }
+    : index_(index), key_(*key, true), slab_idx_(slab)
+  {}
 
   void operator()(AIO* aio) {
     if (aio->Success())
-      index_->insert({key_, slab_idx_});
+      index_->emplace(key_, slab_idx_);
   }
 };
 
@@ -53,13 +52,12 @@ class DeleteCallback {
 
  public:
   DeleteCallback(std::map<Slice, slab_t>* index, const Slice* key)
-    : index_(index), key_(key->data(), key->size())
-  {
-  }
+    : index_(index), key_(*key, true) {}
 
   void operator()(AIO* aio) {
     if (aio->Success())
       index_->erase(key_);
+    delete[] key_.data();
   }
 };
 
@@ -130,6 +128,7 @@ void Worker::ProcessRequest_(Batch* batch) {
     default:
       assert(0);
   }
+  delete req;
 }
 
 void Worker::Main_() {

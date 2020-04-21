@@ -137,6 +137,8 @@ ssize_t FileData::Write(FileHandle* handle, const Slice* data, size_t off) {
       res += new_file.first->second.Write(large_data, 0);
     }
     assert(res == static_cast<ssize_t>(size));
+    delete aggr_data;
+    delete large_data;
     return res;
   }
 }

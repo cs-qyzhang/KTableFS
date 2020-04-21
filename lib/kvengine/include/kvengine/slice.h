@@ -35,7 +35,10 @@ class Slice {
   Slice(const char* s) : data_(s), size_(strlen(s)) {}
 
   // Intentionally copyable.
-  Slice(const Slice& s)
+  Slice(const Slice& s) : data_(s.data_), size_(s.size_) {}
+
+  // deep copy.
+  Slice(const Slice& s, bool cp)
     : data_(new char[s.size_]), size_(s.size_)
   { memcpy(const_cast<char*>(data_), s.data_, size_); }
 

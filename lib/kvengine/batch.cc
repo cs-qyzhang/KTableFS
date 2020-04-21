@@ -11,9 +11,12 @@ Batch::Batch(const Batch& other)
 
 void Batch::FinishRequest(Slice* val, int res) {
   if (requests_.empty()) {
-    Respond* respond = new Respond(val, res);
-    if (callback_)
+    if (callback_) {
+      Respond* respond = new Respond(val, res);
       callback_(respond);
+      delete respond;
+    }
+    delete this;
   } else {
     db_->Submit(this, false);
   }
@@ -28,7 +31,7 @@ void Batch::Clear() {
 void Batch::Get(const Slice& key) {
   Request* req(new Request);
   req->type = Request::ReqType::GET;
-  req->key = new Slice(key);
+  req->key = new Slice(key, true);
   requests_.push_back(req);
 }
 
@@ -42,8 +45,8 @@ void Batch::Get(Slice* key) {
 void Batch::Put(const Slice& key, const Slice& value) {
   Request* req(new Request);
   req->type = Request::ReqType::PUT;
-  req->key = new Slice(key);
-  req->value = new Slice(value);
+  req->key = new Slice(key, true);
+  req->value = new Slice(value, true);
   requests_.push_back(req);
 }
 
@@ -58,8 +61,8 @@ void Batch::Put(Slice* key, Slice* value) {
 void Batch::Update(const Slice& key, const Slice& value) {
   Request* req(new Request);
   req->type = Request::ReqType::UPDATE;
-  req->key = new Slice(key);
-  req->value = new Slice(value);
+  req->key = new Slice(key, true);
+  req->value = new Slice(value, true);
   requests_.push_back(req);
 }
 
@@ -74,7 +77,7 @@ void Batch::Update(Slice* key, Slice* value) {
 void Batch::Delete(const Slice& key) {
   Request* req(new Request);
   req->type = Request::ReqType::DELETE;
-  req->key = new Slice(key);
+  req->key = new Slice(key, true);
   requests_.push_back(req);
 }
 
@@ -89,8 +92,8 @@ void Batch::Scan(const Slice& min_key, const Slice& max_key,
                  std::function<bool(Slice*,Slice*)> scan_callback) {
   Request* req(new Request);
   req->type = Request::ReqType::SCAN;
-  req->min_key = new Slice(min_key);
-  req->max_key = new Slice(max_key);
+  req->min_key = new Slice(min_key, true);
+  req->max_key = new Slice(max_key, true);
   req->scan_callback = std::move(scan_callback);
   requests_.push_back(req);
 }

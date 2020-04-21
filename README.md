@@ -37,3 +37,7 @@ Normally define struct members in size decreasing order will be good.
 ![file aggregation](doc/figure/file_aggregation.png)
 
 https://stackoverflow.com/a/10997489/7640227
+
+## Valgrind
+
+- Mismatched free() / delete / delete []: 使用new[] 对应delete，或使用new但对应delete[]

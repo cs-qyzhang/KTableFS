@@ -58,6 +58,7 @@ class KTableFS {
   KTableFS(std::string meta_dir);
   KTableFS(const KTableFS&) = delete;
   KTableFS(KTableFS&&) = delete;
+  ~KTableFS();
 
   static void IndexInsert(const FileKey& key, File* file) {
     // fs->open_file_.emplace(key, file);

@@ -26,6 +26,7 @@ class LookupCallback {
       fuse_reply_err(req_, -respond->res);
     else {
       FileHandle* handle = new FileHandle(respond->data, key_);
+      delete respond->data;
       if (handle->IsRegular()) {
         fuse_entry_param e = handle->FuseEntry();
         fuse_reply_entry(req_, &e);
