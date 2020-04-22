@@ -91,7 +91,13 @@ class KTableFS {
 		               struct fuse_file_info *fi);
 	static void ReadBuf(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off,
 		                  struct fuse_file_info *fi);
+  static void WriteBuf(fuse_req_t req, fuse_ino_t ino, struct fuse_bufvec *bufv,
+                       off_t off, struct fuse_file_info *fi);
   static void GetAttr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi);
+  static void CopyFileRange(fuse_req_t req, fuse_ino_t ino_in, off_t off_in,
+                            struct fuse_file_info *fi_in, fuse_ino_t ino_out,
+                            off_t off_out, struct fuse_file_info *fi_out,
+                            size_t len, int flags);
 
   static void Init(void *userdata, struct fuse_conn_info *conn);
   static void Destroy(void *userdata);

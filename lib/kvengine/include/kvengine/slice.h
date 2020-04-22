@@ -61,7 +61,7 @@ class Slice {
   }
 
   bool operator<(const Slice& b) const {
-    const size_t min_len = (size_ < b.size_) ? size_ : b.size_;
+    const size_t min_len = std::min(size_, b.size_);
     int r = memcmp(data_, b.data_, min_len);
     if (r == 0 && size_ < b.size_) {
       r = -1;

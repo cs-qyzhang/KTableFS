@@ -31,8 +31,8 @@ static const struct fuse_lowlevel_ops lo_oper = {
   .rename          = nullptr,
   .link            = nullptr,
   .open            = KTableFS::Open,
-  .read            = KTableFS::Read,
-  .write           = KTableFS::Write,
+  .read            = KTableFS::ReadBuf,
+  // .write           = KTableFS::Write,
   .flush           = nullptr,
   .release         = nullptr,
   .fsync           = nullptr,
@@ -40,10 +40,10 @@ static const struct fuse_lowlevel_ops lo_oper = {
   .readdir         = KTableFS::ReadDir,
   .releasedir      = nullptr,
   .statfs          = nullptr,
-  .write_buf       = nullptr,
+  .write_buf       = KTableFS::WriteBuf,
   .fallocate       = nullptr,
   .readdirplus     = nullptr,
-  .copy_file_range = nullptr,
+  .copy_file_range = KTableFS::CopyFileRange,
 };
 
 int main(int argc, char **argv) {

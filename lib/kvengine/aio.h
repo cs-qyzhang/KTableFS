@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <vector>
 #include "kvengine/batch.h"
+#include "kvengine_config.h"
 
 namespace kvengine {
 
@@ -28,7 +29,7 @@ class AIO {
   friend class LocalFileSet;
 
  public:
-  static const int MAX_EVENT = 64;
+  static const int MAX_EVENT = AIO_MAX_EVENTS;
 
   explicit AIO(Batch* batch)
     : iocb_(new iocb()), event_(nullptr), batch_(batch)

@@ -1,24 +1,20 @@
 cmake_minimum_required(VERSION 2.8)
 
 project(KTableFS)
+set(KTableFS_VERSION_MAJOR 1)
+set(KTableFS_VERSION_MINOR 0)
 
-# program configurations
-set(KTableFS_VERSION_MAJOR 0)
-set(KTableFS_VERSION_MINOR 2)
-set(PAGE_SIZE 4096)
-set(PAGECACHE_NR_PAGE 262144)
-set(ARENA_NB_BLOCKS 1024)
-set(ARENA_BLOCK_SIZE PAGE_SIZE)
+# KTableFS configurations
+set(PAGECACHE_NR_PAGE "1024 * 256")
 set(AIO_MAX_EVENTS 64)
-set(BTREE_ORDER 4)
-set(KVENGINE_THREAD_NR 1)
-set(AGGREGATION_SLAB_SIZE 8)     # unit: KB
-set(AGGREGATION_SLAB_NR 8192)
-set(AGGREGATION_HEADER_SIZE 4096) # (4+((AGGREGATION_SLAB_NR+7)/8)+BLOCK_SIZE-1)/BLOCK_SIZE*BLOCK_SIZE
-set(INDEX_TYPE rbtree)
+set(KVENGINE_THREAD_NR 4)
+set(FILEDATA_SLAB_SIZE_KB 8)
 
+# build type: Release/Debug
 set(CMAKE_BUILD_TYPE Release)
+
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_FLAGS "-Wall -std=c++17")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto")
@@ -31,9 +27,19 @@ else()
   message(STATUS "Some other build type.")
 endif()
 
+set(KVENGINE_SRC "${PROJECT_SOURCE_DIR}/lib/kvengine")
+set(TEST_SRC     "${PROJECT_SOURCE_DIR}/test")
+set(UTIL_SRC     "${PROJECT_SOURCE_DIR}/util")
+set(FS_SRC       "${PROJECT_SOURCE_DIR}/src")
+
 configure_file(
-  "${PROJECT_SOURCE_DIR}/ktablefs_config.h.in"
-  "${PROJECT_SOURCE_DIR}/include/ktablefs_config.h"
+  "${KVENGINE_SRC}/kvengine_config.h.in"
+  "${KVENGINE_SRC}/kvengine_config.h"
+)
+
+configure_file(
+  "${FS_SRC}/ktablefs_config.h.in"
+  "${FS_SRC}/ktablefs_config.h"
 )
 
 include(CheckIncludeFiles)
@@ -43,28 +49,6 @@ if(NOT HAVE_AIO)
 endif()
 
 enable_testing()
-
-function(test_unit unit file)
-  add_executable("${unit}_test" "${PROJECT_SOURCE_DIR}/test/${file}_test.c" "${PROJECT_SOURCE_DIR}/${file}.c")
-  foreach(src IN LISTS ARGN)
-    target_sources("${unit}_test" PRIVATE "${PROJECT_SOURCE_DIR}/${src}.c")
-  endforeach()
-  add_test("${unit}_test" "${unit}_test")
-endfunction(test_unit)
-
-# test_unit(arena util/arena)
-# test_unit(queue util/queue)
-# target_link_libraries(queue_test pthread)
-# test_unit(btree util/index/btree/btree util/arena)
-# test_unit(rbtree util/index/rbtree/rbtree util/arena util/freelist util/memslab util/hash_table)
-
-# add_executable(aio_test "${PROJECT_SOURCE_DIR}/test/kvengine/aio_test.c")
-# add_test(aio_test aio_test)
-
-set(KVENGINE_SRC "${PROJECT_SOURCE_DIR}/lib/kvengine")
-set(TEST_SRC "${PROJECT_SOURCE_DIR}/test")
-set(UTIL_SRC "${PROJECT_SOURCE_DIR}/util")
-set(FS_SRC "${PROJECT_SOURCE_DIR}/src")
 
 include_directories("${KVENGINE_SRC}/include")
 include_directories("${UTIL_SRC}/include")
@@ -101,21 +85,6 @@ add_executable(kvengine_test "${TEST_SRC}/kvengine_test.cc")
 target_link_libraries(kvengine_test kvengine pthread)
 add_test(kvengine_test kvengine_test)
 
-# add_executable(ktablefs_ll "${PROJECT_SOURCE_DIR}/src/ktablefs_ll.c")
-# target_sources(ktablefs_ll
-#   PRIVATE
-#     "${PROJECT_SOURCE_DIR}/src/io.c"
-#     "${PROJECT_SOURCE_DIR}/src/kv_impl.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/kvengine.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/pagecache.c"
-#     "${PROJECT_SOURCE_DIR}/src/kvengine/slab.c"
-#     "${PROJECT_SOURCE_DIR}/util/hash.c"
-#     "${PROJECT_SOURCE_DIR}/util/arena.c"
-#     "${PROJECT_SOURCE_DIR}/util/freelist.c"
-#     "${PROJECT_SOURCE_DIR}/util/queue.c"
-#     "${PROJECT_SOURCE_DIR}/util/memslab.c"
-#     "${PROJECT_SOURCE_DIR}/util/hash_table.c"
-# )
 # if (INDEX_TYPE MATCHES rbtree)
 #   target_sources(ktablefs_ll
 #     PRIVATE

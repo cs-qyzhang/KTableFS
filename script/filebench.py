@@ -3,22 +3,35 @@ import os;
 import matplotlib;
 import matplotlib.pyplot as plt;
 import numpy as np;
+import string;
+import subprocess;
 from datetime import datetime;
 
-path_prefix = "/home/qyzhang/Projects/GraduationProject/code/"
-# path_prefix = "/root/"
-
 machine_name = "ThinkPad-T490"
-filebench = path_prefix + "filebench-1.5-alpha3/build/bin/filebench"
-perf_name_dict = {"ops/s": "IOPS", "mb/s": "bandwidth", "ms/op": "latency", "max ms/op": "max latency", "min ms/op": "min latency"};
+
+perf_name_dict = {
+    "ops/s": "IOPS",
+    "mb/s": "bandwidth",
+    "ms/op": "latency",
+    "max ms/op": "max latency",
+    "min ms/op": "min latency"
+};
+
+ktablefs = "../build/ktablefs"
+tablefs = "./tablefs"
+ext4_fuse = "../build/ext4_fuse"
+filebench = "../third_party/filebench-1.5-alpha3/build/bin/filebench"
+
+metadir  = os.path.abspath(".") + "/../build/metadir"
+datadir  = os.path.abspath(".") + "/../build/datadir"
+mountdir = os.path.abspath(".") + "/../build/mount"
 
 class Bench:
-    def __init__(self, progs, benchfile, args, machine):
+    def __init__(self, progs, benchfile, args):
         self.progs = progs;
         self.benchfile = benchfile;
         self.args = args;
         self.stats = [];
-        self.machine = machine;
         if os.path.exists("Manifest"):
             with open("Manifest", 'r+') as f:
                 s = f.read();
@@ -30,50 +43,34 @@ class Bench:
                 self.seq = 1;
                 f.write(str(0));
 
-    def parse_args(self):
-        arg_list = [];
-        if self.args:
-            if "single thread" in self.args:
-                arg_list.append("-s");
-            if "foreground" in self.args:
-                arg_list.append("-f");
-            arg_list.append("--datadir="+self.args["datadir"]);
-            arg_list.append(self.args["mountdir"]);
-        return " ".join(arg_list);
-
     def run_cmd_(self, cmd):
         print(cmd);
         return os.system(cmd);
 
     def mount_(self, prog):
-        cmd = "";
-        if prog.split('/')[-1] == "tablefs":
-            self.run_cmd_("rm -r " + path_prefix + "KTableFS/build/metadir/*");
-            self.run_cmd_("rm -r " + path_prefix + "KTableFS/build/datadir/*");
-            cmd = prog + " -mountdir " + path_prefix + "KTableFS/build/mount -metadir " + path_prefix + "KTableFS/build/metadir -datadir " + path_prefix + "KTableFS/build/datadir";
-        else:
-            cmd = prog + " " + self.parse_args();
-        print("mount", prog);
-        print("    ", cmd, end=" ");
-        if os.system(cmd):
-            print("-> ERROR");
-            return False;
-        else:
-            print("-> Success");
+        self.run_cmd_("fusermount -u " + mountdir);
+        self.run_cmd_("rm -r " + datadir + "/*");
+        self.run_cmd_("rm -r " + metadir + "/*");
+        self.run_cmd_("rm -r " + mountdir + "/*");
+        if prog == "tablefs":
+            cmd = tablefs + " -mountdir " + mountdir + " -metadir " + metadir + " -datadir " + datadir;
+            return self.run_cmd_(cmd);
+        elif prog == "ktablefs":
+            cmd = ktablefs + " " + ' '.join(self.args) + " --datadir=" + datadir + " " + mountdir;
+            return self.run_cmd_(cmd);
+        elif prog == "ext4_fuse":
+            cmd = ext4_fuse + " " + ' '.join(self.args) + " --datadir=" + datadir + " " + mountdir;
+            return self.run_cmd_(cmd);
+        elif prog == "ext4":
             return True;
-
-    def prepare_(self):
-        self.run_cmd_("fusermount -u " + self.args["mountdir"]);
-        self.run_cmd_("rm -r " + self.args["datadir"] + "/*");
-        self.run_cmd_("rm -r " + self.args["mountdir"] + "/*");
 
     def statistic_(self, prog, output:str):
         print(output);
-        lines = output.splitlines();
+        lines = output.splitlines()[1:];
         i = 0;
         begin_time = 0.0;
         stat = {};
-        stat["name"] = prog.split('/')[-1];
+        stat["name"] = prog;
         while True:
             words = lines[i].split();
             if words[1] == "Running...":
@@ -113,25 +110,15 @@ class Bench:
         self.stats.append(stat);
 
     def run(self):
-        self.prepare_();
+        self.run_cmd_(r'sed -i "/set \$dir=/c\set \$dir=' + mountdir.replace('/', r'\/') + '" ' + self.benchfile);
         for prog in self.progs:
             self.mount_(prog);
-            bench_cmd = filebench + " -f " + self.benchfile + " 2>/dev/null";
+            bench_cmd = filebench + " -f " + self.benchfile;
             print("benchmark", bench_cmd);
             stream = os.popen(bench_cmd);
             output = stream.read();
-            self.prepare_();
             self.statistic_(prog, output);
-
-    def autolabel_(self, ax, rects):
-        """Attach a text label above each bar in *rects*, displaying its height."""
-        for rect in rects:
-            height = rect.get_height();
-            ax.annotate('{}'.format(height),
-                        xy=(rect.get_x() + rect.get_width() / 2, height),
-                        xytext=(0, 3),  # 3 points vertical offset
-                        textcoords="offset points",
-                        ha='center', va='bottom');
+        self.run_cmd_("fusermount -u " + mountdir);
 
     def draw_figure(self, perf, show=False):
         prog_nr = len(self.stats);
@@ -152,10 +139,20 @@ class Bench:
         x = np.arange(len(labels));  # the label locations
         width = 0.9 / prog_nr;  # the width of the bars
 
+        def autolabel(ax, rects):
+            """Attach a text label above each bar in *rects*, displaying its height."""
+            for rect in rects:
+                height = rect.get_height();
+                ax.annotate('{}'.format(height),
+                            xy=(rect.get_x() + rect.get_width() / 2, height),
+                            xytext=(0, 3),  # 3 points vertical offset
+                            textcoords="offset points",
+                            ha='center', va='bottom');
+
         fig, ax = plt.subplots();
         for i in range(prog_nr):
             rect = ax.bar(x - (prog_nr - 1) * width / 2.0 + i * width, data[i], width, label=self.stats[i]["name"]);
-            # self.autolabel_(ax, rect);
+            # autolabel(ax, rect);
 
         ax.set_ylabel(perf);
         ax.set_title(perf_name_dict[perf]);
@@ -323,7 +320,7 @@ class Bench:
             def write_item(name, content):
                 f.write(r"\item[" + name + ":] " + content + "\n");
 
-            write_item("Machine Type", self.machine);
+            write_item("Machine Type", machine_name);
 
             stream = os.popen("lscpu | grep 'Model name'");
             cpu = stream.read()[:-1].split(':')[-1].strip();
@@ -334,7 +331,7 @@ class Bench:
             stream = os.popen("lsmem | grep 'online memory'");
             write_item("RAM", stream.read()[:-1].split(':')[1].strip());
 
-            stream = os.popen("df -P " + self.args["mountdir"] + " | awk 'END{print $1}'");
+            stream = os.popen("df -P " + mountdir + " | awk 'END{print $1}'");
             partition = stream.read()[:-1];
             stream = os.popen("cat /sys/class/block/" + partition.split('/')[-1] + "/dev");
             dev = stream.read()[:-1];
@@ -344,7 +341,8 @@ class Bench:
                 stream = os.popen("cat /sys/dev/block/" + dev + "/device/model");
                 disk_model = stream.read()[:-1].strip();
             stream = os.popen("cat /sys/dev/block/" + dev + "/size");
-            disk_size = int(int(stream.read()[:-1]) * 512.0 / 1024 / 1024 / 1024);
+            tmp = stream.read();
+            disk_size = int(int(tmp[:-1]) * 512.0 / 1024 / 1024 / 1024);
             write_item("Disk Model", disk_model + " (" + str(disk_size) + "G)");
 
             stream = os.popen("hostnamectl | grep 'Operating System'");
@@ -365,9 +363,9 @@ class Bench:
                             file_size = line.split()[-1].split('=')[1];
                             if file_size[-1] == 'k':
                                 write_item("Benchmark File Size", file_size[:-1] + " KB");
-                            if file_size[-1] == 'm':
+                            elif file_size[-1] == 'm':
                                 write_item("Benchmark File Size", file_size[:-1] + " MB");
-                            if file_size[-1] == 'g':
+                            elif file_size[-1] == 'g':
                                 write_item("Benchmark File Size", file_size[:-1] + " GB");
                         elif param == "nfiles":
                             nfiles = int(line.split()[-1].split('=')[1]);
@@ -376,33 +374,36 @@ class Bench:
                                 nfiles = nfiles // 1000;
                                 magtitude += 1;
                             write_item("Benchmark Number of File", str(nfiles) + ", 000" * magtitude);
+                        elif param == "nthreads":
+                            nthreads = int(line.split()[-1].split('=')[1]);
+                            write_item("Benchmark Threads", str(nthreads));
+                        elif param == "iosize":
+                            iosize = line.split()[-1].split('=')[1];
+                            if iosize[-1] == 'k':
+                                write_item("Benchmark IO Size", iosize[:-1] + " KB");
+                            elif iosize[-1] == 'm':
+                                write_item("Benchmark IO Size", iosize[:-1] + " MB");
+                            elif iosize[-1] == 'g':
+                                write_item("Benchmark IO Size", iosize[:-1] + " GB");
 
-            with open("../CMakeLists.txt", 'r') as cmake:
-                for line in cmake.readlines():
-                    if len(line) > 5 and line[:3]  == "set":
-                        param = line.split()[0].split('(')[-1];
-                        if param == "PAGECACHE_NR_PAGE":
-                            pagecache_size = 4096 * int(line.split()[1][:-1]);
-                            if pagecache_size > 1024 * 1024 * 1024:
-                                write_item("KTableFS Pagecache Size", str(int(pagecache_size / 1024 / 1024 / 1024)) + " GB");
-                            elif pagecache_size > 1024 * 1024:
-                                write_item("KTableFS Pagecache Size", str(int(pagecache_size / 1024 / 1024)) + " MB");
-                            elif pagecache_size > 1024:
-                                write_item("KTableFS Pagecache Size", str(int(pagecache_size / 1024)) + " KB");
-                            else:
-                                write_item("KTableFS Pagecache Size", str(int(pagecache_size)) + " Byte");
-                        elif param == "INDEX_TYPE":
-                            index = line.split()[1][:-1];
-                            if index == 'btree':
-                                write_item("KTableFS Index Type", "B Tree");
-                            elif index == 'rbtree':
-                                write_item("KTableFS Index Type", "Red-Black Tree");
-                        elif param == "AGGREGATION_SLAB_SIZE":
-                            write_item("KTableFS Aggregation File Slab Size", line.split()[1][:-1] + " KB");
-                        elif param == "KVENGINE_THREAD_NR":
-                            write_item("KTableFS Thread Number", line.split()[1][:-1]);
+            with open("../lib/kvengine/kvengine_config.h", 'r') as config:
+                lines = config.readlines();
+                pagecache_size = 4096 * eval(lines[3][28:]);
+                if pagecache_size > 1024 * 1024 * 1024:
+                    write_item("KTableFS Pagecache Size", str(int(pagecache_size / 1024 / 1024 / 1024)) + " GB");
+                elif pagecache_size > 1024 * 1024:
+                    write_item("KTableFS Pagecache Size", str(int(pagecache_size / 1024 / 1024)) + " MB");
+                elif pagecache_size > 1024:
+                    write_item("KTableFS Pagecache Size", str(int(pagecache_size / 1024)) + " KB");
+                else:
+                    write_item("KTableFS Pagecache Size", str(int(pagecache_size)) + " Byte");
+                write_item("KTableFS AIO Max Events", lines[4][28:]);
+            with open("../src/ktablefs_config.h", 'r') as config:
+                lines = config.readlines();
+                write_item("KTableFS Aggregation Slab Size", lines[5][32:] + " KB");
+                write_item("KTableFS Thread Number", lines[6][32:]);
 
-            if self.args["single thread"]:
+            if '-s' in self.args:
                 write_item("FUSE Multi Thread", "No");
             else:
                 write_item("FUSE Multi Thread", "Yes");
@@ -436,15 +437,13 @@ Generated by \LaTeX, Python and Matplotlib
 
 if __name__ == "__main__":
     progs = [
-        path_prefix + "KTableFS/script/tablefs",
-        path_prefix + "KTableFS/script/ktablefs",
-        path_prefix + "KTableFS/build/ext4-fuse",
-        path_prefix + "KTableFS/build/ktablefs_ll",
+        "tablefs",
+        "ext4-fuse",
+        "ext4",
+        "ktablefs",
     ];
-    args = {};
-    args["single thread"] = 1;
-    args["datadir"] = path_prefix + "KTableFS/build/datadir";
-    args["mountdir"] = path_prefix + "KTableFS/build/mount";
-    bench = Bench(progs, "copyfiles.f", args, machine_name);
+    args = [];
+
+    bench = Bench(progs, "copyfiles.f", args);
     bench.run();
     bench.summary(True);

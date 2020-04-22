@@ -6,6 +6,7 @@
 #include "pagecache.h"
 #include "local_fileset.h"
 #include "aio.h"
+#include "kvengine_config.h"
 
 namespace kvengine {
 
@@ -36,7 +37,7 @@ void LocalFileSet::LocalFile::Close() {
 }
 
 LocalFileSet::LocalFileSet(std::string directory)
-  : directory_(directory), pagecache_(1024*128)
+  : directory_(directory), pagecache_(PAGECACHE_NR_PAGE)
 {
   // valid directory, remove last '/'
   // TODO: stat()..

@@ -6,6 +6,7 @@
 #include "file.h"
 #include "file_key.h"
 #include "file_data.h"
+#include "ktablefs_config.h"
 
 namespace ktablefs {
 
@@ -21,10 +22,10 @@ double KTableFS::timeout;
 KTableFS* KTableFS::fs;
 
 KTableFS::KTableFS(std::string data_dir)
-  : data_dir_("/home/qyzhang/Projects/GraduationProject/code/KTableFS/build/datadir"), cur_ino_(FUSE_ROOT_ID)
+  : data_dir_(data_dir), cur_ino_(FUSE_ROOT_ID)
 {
   db_ = new DB();
-  db_->Open(data_dir_ + "/DB", true, 4);
+  db_->Open(data_dir_ + "/DB", true, KVENGINE_THREAD_NR);
 
   struct stat stat_buf;
   int res = stat(data_dir_.c_str(), &stat_buf);
@@ -36,7 +37,7 @@ KTableFS::KTableFS(std::string data_dir)
   st_blksize = stat_buf.st_blksize;
   timeout = 1.0;
 
-  file_data_ = new FileData(data_dir_);
+  file_data_ = new FileData(data_dir_, 1024 * FILEDATA_SLAB_SIZE_KB);
   root_ = new FileHandle();
   root_->file->st_ino = FUSE_ROOT_ID;
   root_->file->st_mode = stat_buf.st_mode;
@@ -59,7 +60,7 @@ KTableFS::~KTableFS() {
 }
 
 void KTableFS::Init(void *userdata, struct fuse_conn_info *conn) {
-  fs = new KTableFS("");
+  fs = new KTableFS(option.datadir);
 }
 
 void KTableFS::Destroy(void *userdata) {

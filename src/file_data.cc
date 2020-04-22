@@ -138,6 +138,52 @@ void FileData::ReadBuf(FileHandle* handle, fuse_bufvec* bufvec,
   }
 }
 
+void FileData::WriteBuf(FileHandle* handle, fuse_bufvec* bufvec,
+                        size_t size, size_t off) {
+  File* file = handle->file;
+  if (size + off <= aggr_block_size_) {
+    // read aggregation file
+    *bufvec = FUSE_BUFVEC_INIT(size);
+    bufvec->buf[0].flags = static_cast<fuse_buf_flags>(FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK);
+    bufvec->buf[0].fd = aggr_files_[file->aggr.file - 1].fd;
+    bufvec->buf[0].pos = file->aggr.no * aggr_block_size_ + off;
+  } else if (off >= aggr_block_size_) {
+    // read large file
+    *bufvec = FUSE_BUFVEC_INIT(size);
+    bufvec->buf[0].flags = static_cast<fuse_buf_flags>(FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK);
+    bufvec->buf[0].pos = off - aggr_block_size_;
+    auto iter = large_files_.find(file->st_ino);
+    if (iter != large_files_.end()) {
+      bufvec->buf[0].fd = iter->second.fd;
+    } else {
+      auto new_file = large_files_.emplace(file->st_ino,
+          work_dir_ + "/large_" + std::to_string(file->st_ino));
+      assert(new_file.second);
+      bufvec->buf[0].fd = new_file.first->second.fd;
+    }
+  } else {
+    bufvec->count = 2;
+    bufvec->idx = 0;
+    bufvec->off = 0;
+    bufvec->buf[0].flags = static_cast<fuse_buf_flags>(FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK);
+    bufvec->buf[0].fd = aggr_files_[file->aggr.file - 1].fd;
+    bufvec->buf[0].pos = file->aggr.no * aggr_block_size_ + off;
+    bufvec->buf[0].size = aggr_block_size_ - off;
+    bufvec->buf[1].flags = static_cast<fuse_buf_flags>(FUSE_BUF_IS_FD | FUSE_BUF_FD_SEEK);
+    bufvec->buf[1].pos = 0;
+    bufvec->buf[1].size = size - (aggr_block_size_ - off);
+    auto iter = large_files_.find(file->st_ino);
+    if (iter != large_files_.end()) {
+      bufvec->buf[1].fd = iter->second.fd;
+    } else {
+      auto new_file = large_files_.emplace(file->st_ino,
+          work_dir_ + "/large_" + std::to_string(file->st_ino));
+      assert(new_file.second);
+      bufvec->buf[1].fd = new_file.first->second.fd;
+    }
+  }
+}
+
 // Update File Size
 ssize_t FileData::Write(FileHandle* handle, const Slice* data, size_t off) {
   File* file = handle->file;

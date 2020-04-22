@@ -10,12 +10,12 @@ PageCache::PageCache(int pages)
   : newest_(nullptr), oldest_(nullptr),
     used_page_(0), max_page_(pages)
 {
-  data_ = reinterpret_cast<char*>(std::aligned_alloc(PAGE_SIZE, PAGE_SIZE * pages));
+  data_ = new (std::align_val_t{PAGE_SIZE}) char[PAGE_SIZE * pages];
   assert(data_);
 }
 
 PageCache::~PageCache() {
-  std::free(data_);
+  delete[] data_;
   while (newest_ != nullptr) {
     Entry* old = newest_;
     newest_ = newest_->next;
@@ -72,7 +72,7 @@ PageCache::Entry* PageCache::NewEntry(uint64_t hash) {
 
 PageCache::Entry* PageCache::Lookup(uint64_t hash) {
   Entry* p = newest_;
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 20; ++i) {
     if (p == nullptr)
       return nullptr;
     if (p->valid && p->hash == hash) {

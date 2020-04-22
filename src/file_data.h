@@ -44,12 +44,14 @@ class FileData {
   std::list<aggr_t> aggr_free_;
 
  public:
-  FileData(std::string work_dir)
-    : work_dir_(work_dir), aggr_block_size_(8192), cur_aggr_file_(0), cur_aggr_index_(0x10000) {}
+  FileData(std::string work_dir, size_t slab_size)
+    : work_dir_(work_dir), aggr_block_size_(slab_size),
+      cur_aggr_file_(0), cur_aggr_index_(0x10000) {}
   aggr_t Create();
   void Delete(FileHandle* handle);
   ssize_t Read(FileHandle* handle, char* buf, size_t size, size_t off);
   void ReadBuf(FileHandle* handle, fuse_bufvec* bufvec, size_t size, size_t off);
+  void WriteBuf(FileHandle* handle, fuse_bufvec* bufvec, size_t size, size_t off);
   ssize_t Write(FileHandle* handle, const Slice* data, size_t off);
 };
 

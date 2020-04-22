@@ -53,8 +53,10 @@ _minted*
 *.listing
 
 build
+*.o
 .vscode
-include/ktablefs_config.h
+src/ktablefs_config.h
+lib/kvengine/kvengine_config.h
 !doc/Makefile
 script/*
 !script/*.py
@@ -64,3 +66,20 @@ script/*
 !script/tablefs-debian
 !script/ktablefs
 !latexmkrc
+
+# filebench
+autom4te.cache
+.deps
+.libs
+third_party/filebench-1.5-alpha3/filebench
+third_party/filebench-1.5-alpha3/config.h
+third_party/filebench-1.5-alpha3/config.log
+third_party/filebench-1.5-alpha3/config.status
+third_party/filebench-1.5-alpha3/stamp-h1
+third_party/filebench-1.5-alpha3/cvars/*.lo
+third_party/filebench-1.5-alpha3/cvars/*.la
+third_party/filebench-1.5-alpha3/cvars/mtwist/.dirstamp
+third_party/filebench-1.5-alpha3/parser_gram.c
+third_party/filebench-1.5-alpha3/parser_gram.h
+third_party/filebench-1.5-alpha3/parser_lex.c
+third_party/filebench-1.5-alpha3/tags
