@@ -1,5 +1,5 @@
 #!/bin/bash
-apt install build-essential cmake pkg-config libfuse3-3 libfuse3-dev python3 ipython3 python3-matplotlib bison flex texlive texlive-xetex fuse3 screen
+apt install build-essential automake cmake pkg-config libfuse3-3 libfuse3-dev python3 ipython3 python3-matplotlib bison flex texlive texlive-xetex fuse3 screen
 cd ..
 mkdir build
 cd build
