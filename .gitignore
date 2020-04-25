@@ -58,13 +58,13 @@ build
 src/ktablefs_config.h
 lib/kvengine/kvengine_config.h
 !doc/Makefile
-script/*
-!script/*.py
-!script/*.f
-!script/*.sh
-!script/tablefs
-!script/tablefs-debian
-!script/ktablefs
+scripts/*
+!scripts/*.py
+!scripts/*.f
+!scripts/*.sh
+!scripts/tablefs
+!scripts/tablefs-debian
+!scripts/ktablefs
 !latexmkrc
 
 # filebench

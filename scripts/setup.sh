@@ -8,13 +8,9 @@ make
 mkdir mount
 mkdir datadir
 mkdir metadir
-cd ../../
-wget https://github.com/filebench/filebench/releases/download/1.5-alpha3/filebench-1.5-alpha3.tar.gz
-tar -xzvf filebench-1.5-alpha3.tar.gz
-rm filebench-1.5-alpha3.tar.gz
-cd filebench-1.5-alpha3
+cd ../third_party/filebench-1.5-alpha3
 mkdir build
-./configure --prefix=/root/filebench-1.5-alpha3/build
+./configure --prefix=$(pwd)/build
 make install
 echo 0 > /proc/sys/kernel/randomize_va_space
-cd ../KTableFS/script
+cd ../../scripts
